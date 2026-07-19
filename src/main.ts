@@ -1,0 +1,24 @@
+import { NestFactory } from '@nestjs/core';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
+import { AppModule } from './app.module';
+import { GlobalExceptionFilter } from './exception/global-exception.filter';
+import dotenv from "dotenv";
+dotenv.config();
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.useGlobalFilters(new GlobalExceptionFilter());
+  app.use(cookieParser());
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('WA POC API')
+    .setDescription('Resort and FAQ management API')
+    .setVersion('1.0')
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api', app, document);
+
+  await app.listen(process.env.PORT ?? 3000);
+}
+bootstrap();
