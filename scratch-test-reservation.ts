@@ -28,7 +28,8 @@ const TEST_CASES: { label: string; guestMessage: string }[] = [
 
 async function main() {
     const geminiClient = new GeminiAiClient();
-    const aiService = new AiService(geminiClient);
+    const logger = { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {} } as any;
+    const aiService = new AiService(geminiClient, logger);
 
     const resort = {
         id: 'resort-1',
@@ -58,6 +59,7 @@ async function main() {
         reservationRepository,
         messageSender,
         redis,
+        logger,
     );
 
     const featureContext = await (processor as any).buildFeatureContext(resort.id);

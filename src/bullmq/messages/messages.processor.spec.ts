@@ -1,4 +1,5 @@
 import { Test } from "@nestjs/testing";
+import { getLoggerToken } from "nestjs-pino";
 import { MESSAGE_SENDER } from "./message-sender.interface";
 import { ResortContextService } from "src/resort/resort-context.service";
 import { ResortFeatureRepository } from "src/repository/resort-feature.repository";
@@ -17,6 +18,17 @@ function mockRedis(overrides: Partial<Record<'get' | 'incr' | 'expire' | 'set' |
         set: jest.fn(),
         del: jest.fn(),
         ...overrides,
+    };
+}
+
+function mockLogger() {
+    return {
+        trace: jest.fn(),
+        debug: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        fatal: jest.fn(),
     };
 }
 
@@ -69,6 +81,10 @@ describe('MessageProcessor', () => {
                     provide: REDIS_CLIENT,
                     useValue: mockRedis(),
                 },
+                {
+                    provide: getLoggerToken(MessageFlushProcessor.name),
+                    useValue: mockLogger(),
+                },
             ],
         }).compile();
 
@@ -86,12 +102,13 @@ describe('MessageProcessor', () => {
     it('should return early if there are no messages to flush', async () => {
         const processor = new MessageFlushProcessor(
             { drain: jest.fn().mockResolvedValue([]) } as any,
-            new AiService(null as any),
+            new AiService(null as any, mockLogger() as any),
             { get: jest.fn() } as any,
             { find: jest.fn() } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
             { sendText: jest.fn() } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -116,6 +133,7 @@ describe('MessageProcessor', () => {
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -142,6 +160,7 @@ describe('MessageProcessor', () => {
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
             { sendText: mockSendText } as any,
             redis as any,
+            mockLogger() as any,
         );
 
         await expect(processor.process(job)).resolves.toBeUndefined();
@@ -176,10 +195,11 @@ describe('MessageProcessor', () => {
             { drain: mockDrain } as any,
             { generateReply: mockGenerateReply } as any,
             { get: jest.fn().mockResolvedValue(resort) } as any,
-            { find: jest.fn() } as any,
+            { find: jest.fn().mockResolvedValue([]) } as any,
             { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -205,6 +225,7 @@ describe('MessageProcessor', () => {
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -213,6 +234,98 @@ describe('MessageProcessor', () => {
         expect(mockGenerateReply).toHaveBeenCalledWith('John Doe', expect.any(String));
         expect(mockSendText).toHaveBeenCalledWith('123', '456', 'I am fine, thank you!');
     });
+    it('should handle errors when generating AI reply', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'Hello', timestamp: 1234567890 },
+        ]);
+
+        const mockGenerateReply = jest.fn().mockRejectedValue(new Error('AI service error'));
+
+        const mockSendText = jest.fn();
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockResolvedValue(null) } as any,
+            { find: jest.fn() } as any,
+            { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { sendText: mockSendText } as any,
+            mockRedis() as any,
+            mockLogger() as any,
+        );
+
+        await expect(processor.process(job)).resolves.toBeUndefined();
+
+        expect(mockDrain).toHaveBeenCalledWith('123:456');
+        expect(mockGenerateReply).toHaveBeenCalledWith('John Doe', expect.any(String));
+        expect(mockSendText).toHaveBeenCalledWith(
+            '123',
+            '456',
+            "We're experiencing high demand right now and couldn't process your message. Please try again in a few minutes.",
+        );
+    });
+    it('should handle errors when fetching resort context', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'Hello', timestamp: 1234567890 },
+        ]);
+
+        const mockGenerateReply = jest.fn().mockResolvedValue('I am fine, thank you!');
+
+        const mockSendText = jest.fn();
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockRejectedValue(new Error('Resort context error')) } as any,
+            { find: jest.fn() } as any,
+            { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { sendText: mockSendText } as any,
+            mockRedis() as any,
+            mockLogger() as any,
+        );
+
+        await expect(processor.process(job)).resolves.toBeUndefined();
+
+        expect(mockDrain).toHaveBeenCalledWith('123:456');
+        expect(mockGenerateReply).not.toHaveBeenCalled();
+        expect(mockSendText).toHaveBeenCalledWith(
+            '123',
+            '456',
+            "We're experiencing high demand right now and couldn't process your message. Please try again in a few minutes.",
+        );
+    });
+    it('should handle errors when fetching resort features', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'Hello', timestamp: 1234567890 },
+        ]);
+
+        const mockGenerateReply = jest.fn().mockResolvedValue('I am fine, thank you!');
+
+        const mockSendText = jest.fn();
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
+            { find: jest.fn().mockRejectedValue(new Error('Resort features error')) } as any,
+            { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { sendText: mockSendText } as any,
+            mockRedis() as any,
+            mockLogger() as any,
+        );
+
+        await expect(processor.process(job)).resolves.toBeUndefined();
+
+        expect(mockDrain).toHaveBeenCalledWith('123:456');
+        expect(mockGenerateReply).not.toHaveBeenCalled();
+        expect(mockSendText).toHaveBeenCalledWith(
+            '123',
+            '456',
+            "We're experiencing high demand right now and couldn't process your message. Please try again in a few minutes.",
+        );
+    });
+
+
     it('should handle errors when sending text', async () => {
         const mockDrain = jest.fn().mockResolvedValue([
             { id: 'msg1', text: 'Hello', timestamp: 1234567890 },
@@ -230,6 +343,7 @@ describe('MessageProcessor', () => {
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await expect(processor.process(job)).rejects.toThrow('Send text error');
@@ -239,7 +353,7 @@ describe('MessageProcessor', () => {
         expect(mockSendText).toHaveBeenCalledWith('123', '456', 'I am fine, thank you!');
     });
 
-    it('does not fetch features when the guest message is not booking-related', async () => {
+    it('does not fetch features when there is no resort for the conversation', async () => {
         const mockDrain = jest.fn().mockResolvedValue([
             { id: 'msg1', text: 'Hello there', timestamp: 1234567890 },
         ]);
@@ -248,11 +362,12 @@ describe('MessageProcessor', () => {
         const processor = new MessageFlushProcessor(
             { drain: mockDrain } as any,
             { generateReply: jest.fn().mockResolvedValue('Hi!') } as any,
-            { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
+            { get: jest.fn().mockResolvedValue(null) } as any,
             { find: mockFind } as any,
             { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
             { sendText: jest.fn() } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -260,9 +375,9 @@ describe('MessageProcessor', () => {
         expect(mockFind).not.toHaveBeenCalled();
     });
 
-    it('fetches features and availability when the guest message is booking-related', async () => {
+    it('fetches features and availability for every guest message, regardless of language', async () => {
         const mockDrain = jest.fn().mockResolvedValue([
-            { id: 'msg1', text: 'How much does the Cabana cost to book?', timestamp: 1234567890 },
+            { id: 'msg1', text: 'Koliko košta Cabana?', timestamp: 1234567890 },
         ]);
         const feature = { id: 'feature-1', name: 'Cabana', price: 49.99, quantity: 5 };
         const mockFind = jest.fn().mockResolvedValue([feature]);
@@ -277,6 +392,7 @@ describe('MessageProcessor', () => {
             { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: mockCountActive } as any,
             { sendText: jest.fn() } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -313,6 +429,7 @@ describe('MessageProcessor', () => {
             } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -350,6 +467,7 @@ describe('MessageProcessor', () => {
             } as any,
             { sendText: jest.fn() } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -379,6 +497,7 @@ describe('MessageProcessor', () => {
             } as any,
             { sendText: mockSendText } as any,
             redis as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -411,6 +530,7 @@ describe('MessageProcessor', () => {
             } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
+            mockLogger() as any,
         );
 
         await processor.process(job);
@@ -436,6 +556,7 @@ describe('MessageProcessor', () => {
                 { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
                 { sendText: mockSendText } as any,
                 redis as any,
+                mockLogger() as any,
             );
 
             await processor.process(job);
@@ -459,6 +580,7 @@ describe('MessageProcessor', () => {
                 { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
                 { sendText: jest.fn() } as any,
                 redis as any,
+                mockLogger() as any,
             );
 
             await processor.process(job);
@@ -483,6 +605,7 @@ describe('MessageProcessor', () => {
                 { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
                 { sendText: mockSendText } as any,
                 redis as any,
+                mockLogger() as any,
             );
 
             await processor.process(job);

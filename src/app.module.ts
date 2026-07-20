@@ -6,6 +6,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { LoggerModule } from 'nestjs-pino';
 import { ResortModule } from './resort/resort.module';
 import { FaqModule } from './faq/faq.module';
 import { ResortFeatureModule } from './resort-feature/resort-feature.module';
@@ -13,9 +14,43 @@ import { ResortContactModule } from './resort-contact/resort-contact.module';
 import { ReservationModule } from './reservation/reservation.module';
 // import { BullmqModule } from './bullmq/bullmq.module';
 import { AuthModule } from './auth/auth.module';
+import appConfig from './config/app.config';
 
 @Module({
-  imports: [WhatsappModule, ResortModule, FaqModule, ResortFeatureModule, ResortContactModule, ReservationModule, ThrottlerModule.forRoot([
+  imports: [ConfigModule.forRoot({
+    isGlobal: true,
+    load: [appConfig],
+  }), LoggerModule.forRootAsync({
+    inject: [ConfigService],
+    useFactory: (configService: ConfigService) => ({
+      pinoHttp: {
+        level: 'debug',
+        transport: {
+          targets: [
+            {
+              target: 'pino-pretty',
+              options: {
+                colorize: true,
+                singleLine: true,
+                translateTime: 'HH:MM:ss',
+              },
+              level: 'debug',
+            },
+            {
+              target: 'pino-loki',
+              options: {
+                host: configService.get<string>('LOKI_HOST', 'http://localhost:3100'),
+                labels: { service: configService.get<string>('app.name') },
+                batching: true,
+                interval: 5, // push every 5s
+              },
+              level: 'info',
+            },
+          ],
+        },
+      },
+    }),
+  }), WhatsappModule, ResortModule, FaqModule, ResortFeatureModule, ResortContactModule, ReservationModule, ThrottlerModule.forRoot([
     {
       name: 'default',
       ttl: Number(process.env.WEBHOOK_RATE_LIMIT_WINDOW_MS ?? 60_000),

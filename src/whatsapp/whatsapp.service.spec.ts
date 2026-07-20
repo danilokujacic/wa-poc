@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Logger } from '@nestjs/common';
+import { getLoggerToken } from 'nestjs-pino';
 import { WhatsappService } from './whatsapp.service';
 import { MessageBatchProducer } from 'src/bullmq/messages/messages.producer';
 
@@ -15,7 +15,7 @@ describe('WhatsappService', () => {
       providers: [
         WhatsappService,
         { provide: MessageBatchProducer, useValue: { addMessage: jest.fn() } },
-        Logger,
+        { provide: getLoggerToken(WhatsappService.name), useValue: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } },
       ],
     }).compile();
 
@@ -46,7 +46,8 @@ describe('WhatsappService', () => {
       addMessage: jest.fn(),
     };
     const mockLogger = {
-      log: jest.fn(),
+      info: jest.fn(),
+      error: jest.fn(),
     };
 
     const serviceWithMocks = new WhatsappService(mockProducer as any, mockLogger as any);
@@ -100,7 +101,8 @@ describe('WhatsappService', () => {
       addMessage: jest.fn(),
     };
     const mockLogger = {
-      log: jest.fn(),
+      info: jest.fn(),
+      error: jest.fn(),
     };
     const mockSendText = jest.fn();
 
@@ -147,7 +149,7 @@ describe('WhatsappService', () => {
       addMessage: jest.fn().mockRejectedValue(new Error('Queue error')),
     };
     const mockLogger = {
-      log: jest.fn(),
+      info: jest.fn(),
       error: jest.fn(),
     };
     const mockSendText = jest.fn();

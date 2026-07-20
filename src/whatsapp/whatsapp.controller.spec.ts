@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Logger } from '@nestjs/common';
+import { getLoggerToken } from 'nestjs-pino';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappService } from './whatsapp.service';
 import { MessageBatchProducer } from 'src/bullmq/messages/messages.producer';
@@ -19,7 +19,7 @@ describe('WhatsappController', () => {
       providers: [
         WhatsappService,
         { provide: MessageBatchProducer, useValue: { addMessage: jest.fn() } },
-        Logger,
+        { provide: getLoggerToken(WhatsappService.name), useValue: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } },
       ],
     })
       .overrideGuard(WebhookSignatureGuard)

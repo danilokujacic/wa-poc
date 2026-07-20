@@ -28,6 +28,15 @@ const mockResortContextService = {
     warm: jest.fn().mockResolvedValue(undefined),
 }
 
+const mockLogger = {
+    trace: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    fatal: jest.fn(),
+}
+
 describe("MessagesProducer", () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -47,7 +56,7 @@ describe("MessagesProducer", () => {
     });
 
     it("should add a message and schedule a flush job", async () => {
-        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any);
+        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any, mockLogger as any);
         const data = {
             conversationKey: "123:456",
             phoneNumberId: "123",
@@ -80,7 +89,7 @@ describe("MessagesProducer", () => {
         }));
     });
     it("should not add a duplicate message", async () => {
-        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any);
+        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any, mockLogger as any);
         const data = {
             conversationKey: "123:456",
             phoneNumberId: "123",
@@ -102,7 +111,7 @@ describe("MessagesProducer", () => {
         expect(mockQueue.add).not.toHaveBeenCalled();
     });
     it("should reschedule an existing flush job", async () => {
-        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any);
+        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any, mockLogger as any);
         const data = {
             conversationKey: "123:456",
             phoneNumberId: "123",
@@ -133,7 +142,7 @@ describe("MessagesProducer", () => {
         }));
     });
     it("should handle queue.add failure and retry with a new jobId", async () => {
-        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any);
+        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any, mockLogger as any);
         const data = {
             conversationKey: "123:456",
             phoneNumberId: "123",
@@ -157,7 +166,7 @@ describe("MessagesProducer", () => {
     });
 
     it('should drain and flush messages correctly', async () => {
-        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any);
+        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any, mockLogger as any);
         const conversationKey = "123:456";
         const listKey = `wa:buffer:${conversationKey}`;
         const messages = [
@@ -174,7 +183,7 @@ describe("MessagesProducer", () => {
         expect(drainedMessages).toEqual(messages);
     });
     it('should return empty array if no messages to drain', async () => {
-        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any);
+        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any, mockLogger as any);
         const conversationKey = "123:456";
         const listKey = `wa:buffer:${conversationKey}`;
 
@@ -187,7 +196,7 @@ describe("MessagesProducer", () => {
         expect(drainedMessages).toEqual([]);
     });
     it('should handle errors during drain gracefully', async () => {
-        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any);
+        const producer = new MessageBatchProducer(mockQueue as any, mockRedis as any, mockResortContextService as any, mockLogger as any);
         const conversationKey = "123:456";
         const listKey = `wa:buffer:${conversationKey}`;
 

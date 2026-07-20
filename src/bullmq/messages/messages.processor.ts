@@ -1,7 +1,8 @@
-import { Inject, Logger } from '@nestjs/common';
+import { Inject } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import Redis from 'ioredis';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import {
     MessageBatchProducer,
     MESSAGE_FLUSH_QUEUE,
@@ -32,10 +33,11 @@ const COOLDOWN_SECONDS = 30 * 60;
 const OVERWHELMED_MESSAGE =
     "We're experiencing high demand right now and couldn't process your message. Please try again in a few minutes.";
 
-// Cheap relevance gate: only pull feature/pricing/availability data (and pay
-// for the per-feature reservation-count queries) when the guest's message
-// actually looks booking-related, instead of on every single message.
-const BOOKING_KEYWORDS = /\b(book|booking|reserve|reservation|available|availability|price|pricing|cost|how much)\b/i;
+const SERVICE_UNAVAILABLE =
+    "We're experiencing high demand right now and couldn't process your message. Please try again in a few minutes.";
+
+const RESERVATION_CONFLICT_MESSAGE =
+    "We're unable to process your reservation at this time due to a conflict. Please try again later.";
 
 interface ReservationIntent {
     feature: string;
@@ -52,8 +54,6 @@ interface FeatureAvailability {
     concurrency: 10,
 })
 export class MessageFlushProcessor extends WorkerHost {
-    private readonly logger = new Logger(MessageFlushProcessor.name);
-
     constructor(
         private readonly producer: MessageBatchProducer,
         private readonly aiService: AiService,
@@ -62,6 +62,7 @@ export class MessageFlushProcessor extends WorkerHost {
         private readonly reservationRepository: ReservationRepository,
         @Inject(MESSAGE_SENDER) private readonly messageSender: MessageSender,
         @Inject(REDIS_CLIENT) private readonly redis: Redis,
+        @InjectPinoLogger(MessageFlushProcessor.name) private readonly logger: PinoLogger,
     ) {
         super();
     }
@@ -76,12 +77,13 @@ export class MessageFlushProcessor extends WorkerHost {
         }
 
         const combined = batch.map((m) => m.text).join('\n');
-        this.logger.log(
+        this.logger.info(
             `Flushing ${batch.length} msg(s) from ${guestName} (${conversationKey}): ${combined}`,
         );
         try {
             const resort = await this.resortContextService.get(conversationKey, phoneNumberId);
 
+            // handle the special case where the guest is replying to a reservation confirmation prompt
             if (
                 resort &&
                 (await this.handleReservationConfirmationReply(resort, guestNumber, phoneNumberId, combined))
@@ -89,13 +91,13 @@ export class MessageFlushProcessor extends WorkerHost {
                 return;
             }
 
+            // cooldown for conversations that have hit the session message limit, to avoid overwhelming the AI service
             if (await this.isCoolingDown(conversationKey)) {
                 this.logger.debug(`Conversation ${conversationKey} is cooling down, ignoring message`);
                 return;
             }
 
-            const featureContext =
-                resort && BOOKING_KEYWORDS.test(combined) ? await this.buildFeatureContext(resort.id) : [];
+            const featureContext = resort ? await this.buildFeatureContext(resort.id) : [];
 
             const prompt = this.buildPrompt(resort, combined, featureContext);
 
@@ -103,7 +105,6 @@ export class MessageFlushProcessor extends WorkerHost {
             try {
                 rawReply = await this.aiService.generateReply(guestName, prompt);
             } catch (aiError) {
-                this.logger.error(`AI service unavailable for ${conversationKey}: ${aiError}`);
                 await this.messageSender.sendText(phoneNumberId, guestNumber, OVERWHELMED_MESSAGE);
                 return;
             }
@@ -116,10 +117,11 @@ export class MessageFlushProcessor extends WorkerHost {
 
             await this.messageSender.sendText(phoneNumberId, guestNumber, reply);
             await this.registerSessionMessage(conversationKey, phoneNumberId, guestNumber);
+            this.logger.info(`User with ID ${guestNumber} sent a message: ${combined}. Its processed reply is: ${rawReply}`);
         } catch (err) {
-
             this.logger.error(`Error processing flush job for ${conversationKey}: ${err}`);
-            throw err;
+            await this.messageSender.sendText(phoneNumberId, guestNumber, SERVICE_UNAVAILABLE);
+            return;
         }
 
 
@@ -148,6 +150,8 @@ export class MessageFlushProcessor extends WorkerHost {
             trimmed === '1'
                 ? `Your reservation for ${pending.feature.name} has been confirmed!`
                 : `Your reservation for ${pending.feature.name} has been declined.`;
+
+        this.logger.info(`Guest ${guestNumber} responded with "${trimmed}" to reservation confirmation for ${pending.feature.name}. Updated status to ${pending.status}.`);
         await this.messageSender.sendText(phoneNumberId, guestNumber, confirmText);
         return true;
     }

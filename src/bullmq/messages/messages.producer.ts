@@ -1,7 +1,8 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { REDIS_CLIENT } from 'src/redis/redis.provider';
 import { ResortContextService } from 'src/resort/resort-context.service';
 
@@ -23,12 +24,11 @@ export interface StoredMessage {
 
 @Injectable()
 export class MessageBatchProducer {
-    private readonly logger = new Logger(MessageBatchProducer.name);
-
     constructor(
         @InjectQueue(MESSAGE_FLUSH_QUEUE) private readonly queue: Queue,
         @Inject(REDIS_CLIENT) private readonly redis: Redis,
         private readonly resortContextService: ResortContextService,
+        @InjectPinoLogger(MessageBatchProducer.name) private readonly logger: PinoLogger,
     ) { }
 
     async addMessage(

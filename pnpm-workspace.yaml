@@ -1,0 +1,14 @@
+allowBuilds:
+  '@google/genai': true
+  '@scarf/scarf': true
+  bcrypt: true
+  msgpackr-extract: true
+  protobufjs: true
+  unrs-resolver: true
+onlyBuiltDependencies:
+  - '@google/genai'
+  - '@scarf/scarf'
+  - bcrypt
+  - msgpackr-extract
+  - protobufjs
+  - unrs-resolver

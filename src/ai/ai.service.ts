@@ -1,12 +1,15 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { AI_CLIENT } from './ai-client.interface';
 import type { AiClient } from './ai-client.interface';
 import AIClientException from 'src/exception/AIClientException';
 
 @Injectable()
 export class AiService {
-    private readonly logger = new Logger(AiService.name);
-    constructor(@Inject(AI_CLIENT) private readonly aiClient: AiClient) { }
+    constructor(
+        @Inject(AI_CLIENT) private readonly aiClient: AiClient,
+        @InjectPinoLogger(AiService.name) private readonly logger: PinoLogger,
+    ) { }
 
     async generateReply(guestName: string, prompt: string): Promise<string> {
         try {

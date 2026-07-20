@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { MessageBatchProducer } from 'src/bullmq/messages/messages.producer';
 
 const GRAPH_API = 'https://graph.facebook.com/v21.0';
@@ -6,7 +7,10 @@ const GRAPH_API = 'https://graph.facebook.com/v21.0';
 @Injectable()
 export class WhatsappService {
 
-    constructor(private readonly producer: MessageBatchProducer, private logger: Logger) { }
+    constructor(
+        private readonly producer: MessageBatchProducer,
+        @InjectPinoLogger(WhatsappService.name) private readonly logger: PinoLogger,
+    ) { }
 
     verifyWebhookToken(token: string): boolean {
         return token === process.env.WHATSAPP_VERIFY_TOKEN;
@@ -41,7 +45,7 @@ export class WhatsappService {
         }
 
         const guestText = message.text.body;
-        this.logger.log(`Message from ${guestName} (${guestNumber}): ${guestText}`);
+        this.logger.info(`Message from ${guestName} (${guestNumber}): ${guestText}`);
 
         try {
             await this.producer.addMessage(

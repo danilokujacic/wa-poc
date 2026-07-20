@@ -1,4 +1,4 @@
-import { forwardRef, Logger, Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappService } from './whatsapp.service';
 import { MESSAGE_SENDER } from 'src/bullmq/messages/message-sender.interface';
@@ -20,7 +20,6 @@ import { GlobalWebhookThrottlerGuard } from './guards/global-webhook-throttler.g
   controllers: [WhatsappController],
   providers: [
     WhatsappService,
-    Logger,
     { provide: MESSAGE_SENDER, useExisting: WhatsappService },
     MessageBatchProducer,
     MessageFlushProcessor,

@@ -1,5 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { REDIS_CLIENT } from '../redis/redis.provider';
 import { ResortRepository } from '../repository/resort.repository';
 import { Resort } from '../entity/resort.entity';
@@ -8,11 +9,10 @@ const RESORT_CONTEXT_CACHE_TTL_SECONDS = 300;
 
 @Injectable()
 export class ResortContextService {
-    private readonly logger = new Logger(ResortContextService.name);
-
     constructor(
         private readonly resortRepository: ResortRepository,
         @Inject(REDIS_CLIENT) private readonly redis: Redis,
+        @InjectPinoLogger(ResortContextService.name) private readonly logger: PinoLogger,
     ) { }
 
     /**

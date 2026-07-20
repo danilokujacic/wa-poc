@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { getLoggerToken } from 'nestjs-pino';
 import { AiService } from './ai.service';
 import { AI_CLIENT } from './ai-client.interface';
 
@@ -10,6 +11,7 @@ describe('AiService', () => {
       providers: [
         AiService,
         { provide: AI_CLIENT, useValue: { generateReply: jest.fn() } },
+        { provide: getLoggerToken(AiService.name), useValue: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } },
       ],
     }).compile();
 
