@@ -7,6 +7,8 @@ import {
     Patch,
     Post,
     UseGuards,
+    UsePipes,
+    ValidationPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -15,6 +17,7 @@ import { ResortOwnerGuard } from '../resort/guards/resort-owner.guard';
 import { ResortFeatureService } from './resort-feature.service';
 import { CreateResortFeatureDto } from './dto/create-resort-feature.dto';
 import { UpdateResortFeatureDto } from './dto/update-resort-feature.dto';
+import { ResortFeatureResponseDto } from './dto/resort-feature-response.dto';
 
 @ApiTags('resort-feature')
 @ApiBearerAuth()
@@ -25,18 +28,21 @@ export class ResortFeatureController {
 
     @Post()
     @UseGuards(ResortOwnerGuard)
+    @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
     @ApiOperation({ summary: 'Create a feature for this resort — only its owner may do this' })
     @ApiParam({ name: 'resortId', type: String })
-    create(@Param('resortId') resortId: string, @Body() dto: CreateResortFeatureDto) {
-        return this.resortFeatureService.create(resortId, dto);
+    async create(@Param('resortId') resortId: string, @Body() dto: CreateResortFeatureDto) {
+        const feature = await this.resortFeatureService.create(resortId, dto);
+        return ResortFeatureResponseDto.fromEntity(feature);
     }
 
     @Get()
     @UseGuards(ResortMemberGuard)
     @ApiOperation({ summary: "List a resort's features — its owner or employees may do this" })
     @ApiParam({ name: 'resortId', type: String })
-    findAll(@Param('resortId') resortId: string) {
-        return this.resortFeatureService.findAll(resortId);
+    async findAll(@Param('resortId') resortId: string) {
+        const features = await this.resortFeatureService.findAll(resortId);
+        return features.map((feature) => ResortFeatureResponseDto.fromEntity(feature));
     }
 
     @Get(':id')
@@ -44,8 +50,9 @@ export class ResortFeatureController {
     @ApiOperation({ summary: "Get one of a resort's features — its owner or employees may do this" })
     @ApiParam({ name: 'resortId', type: String })
     @ApiParam({ name: 'id', type: String })
-    findOne(@Param('resortId') resortId: string, @Param('id') id: string) {
-        return this.resortFeatureService.findOne(resortId, id);
+    async findOne(@Param('resortId') resortId: string, @Param('id') id: string) {
+        const feature = await this.resortFeatureService.findOne(resortId, id);
+        return ResortFeatureResponseDto.fromEntity(feature);
     }
 
     @Patch(':id')
@@ -53,12 +60,13 @@ export class ResortFeatureController {
     @ApiOperation({ summary: "Update one of a resort's features — only its owner may do this" })
     @ApiParam({ name: 'resortId', type: String })
     @ApiParam({ name: 'id', type: String })
-    update(
+    async update(
         @Param('resortId') resortId: string,
         @Param('id') id: string,
         @Body() dto: UpdateResortFeatureDto,
     ) {
-        return this.resortFeatureService.update(resortId, id, dto);
+        const feature = await this.resortFeatureService.update(resortId, id, dto);
+        return ResortFeatureResponseDto.fromEntity(feature);
     }
 
     @Delete(':id')

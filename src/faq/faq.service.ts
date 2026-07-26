@@ -1,8 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { FindOptionsWhere, ILike } from 'typeorm';
 import { FaqRepository } from '../repository/faq.repository';
 import { Faq } from '../entity/faq.entity';
 import { CreateFaqDto } from './dto/create-faq.dto';
 import { UpdateFaqDto } from './dto/update-faq.dto';
+import { FaqSortableField, FindFaqsQueryDto } from './dto/find-faqs-query.dto';
+
+export interface PaginatedFaqs {
+    data: Faq[];
+    total: number;
+    page: number;
+    limit: number;
+}
 
 @Injectable()
 export class FaqService {
@@ -16,8 +25,22 @@ export class FaqService {
         return this.faqRepository.save(faq);
     }
 
-    findAll(resortId: string): Promise<Faq[]> {
-        return this.faqRepository.find({ where: { resort: { id: resortId } } });
+    async findAll(resortId: string, { search = '', sortBy = FaqSortableField.ID, sortOrder = 'ASC', page = 1, limit = 10 }: FindFaqsQueryDto): Promise<PaginatedFaqs> {
+        const where: FindOptionsWhere<Faq> | FindOptionsWhere<Faq>[] = search
+            ? [
+                { resort: { id: resortId }, question: ILike(`%${search}%`) },
+                { resort: { id: resortId }, answer: ILike(`%${search}%`) },
+            ]
+            : { resort: { id: resortId } };
+
+        const [data, total] = await this.faqRepository.findAndCount({
+            where,
+            order: { [sortBy]: sortOrder },
+            skip: (page - 1) * limit,
+            take: limit,
+        });
+
+        return { data, total, page, limit };
     }
 
     async findOne(resortId: string, id: number): Promise<Faq> {

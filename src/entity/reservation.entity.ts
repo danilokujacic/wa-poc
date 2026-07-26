@@ -15,6 +15,14 @@ export const ACTIVE_RESERVATION_STATUSES = [
     ReservationStatus.PROGRESS,
 ];
 
+export const ALLOWED_RESERVATION_STATUS_TRANSITIONS: Record<ReservationStatus, ReservationStatus[]> = {
+    [ReservationStatus.PENDING]: [ReservationStatus.ACCEPTED, ReservationStatus.DECLINED],
+    [ReservationStatus.ACCEPTED]: [ReservationStatus.PROGRESS],
+    [ReservationStatus.PROGRESS]: [ReservationStatus.FINISHED],
+    [ReservationStatus.DECLINED]: [],
+    [ReservationStatus.FINISHED]: [],
+};
+
 @Entity()
 export class Reservation {
     @PrimaryGeneratedColumn('uuid')
@@ -34,6 +42,12 @@ export class Reservation {
 
     @Column()
     phoneNumber: string;
+
+    @Column({ type: 'int' })
+    adults: number;
+
+    @Column({ type: 'int' })
+    kids: number;
 
     @Column({ type: 'jsonb', nullable: true })
     otherContact: unknown;

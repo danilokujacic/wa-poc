@@ -11,11 +11,13 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ResortOwnerGuard } from './guards/resort-owner.guard';
-import { ResortMemberGuard } from './guards/resort-member.guard';
+import { ResortOwnerGuard } from '../resort/guards/resort-owner.guard';
+import { ResortMemberGuard } from '../resort/guards/resort-member.guard';
+import { ResortOwnerOrSelfGuard } from '../resort/guards/resort-owner-or-self.guard';
 import { ResortUserService } from './resort-user.service';
 import { CreateResortUserDto } from './dto/create-resort-user.dto';
 import { UpdateResortUserDto } from './dto/update-resort-user.dto';
+import { UserResponseDto } from './dto/user-response.dto';
 
 @ApiTags('resort-user')
 @ApiBearerAuth()
@@ -28,16 +30,18 @@ export class ResortUserController {
     @UseGuards(ResortOwnerGuard)
     @ApiOperation({ summary: 'Create an employee user tied to this resort' })
     @ApiParam({ name: 'resortId', type: String })
-    create(@Param('resortId') resortId: string, @Body() dto: CreateResortUserDto) {
-        return this.resortUserService.create(resortId, dto);
+    async create(@Param('resortId') resortId: string, @Body() dto: CreateResortUserDto) {
+        const user = await this.resortUserService.create(resortId, dto);
+        return UserResponseDto.fromEntity(user);
     }
 
     @Get()
     @UseGuards(ResortMemberGuard)
     @ApiOperation({ summary: "List a resort's users — only its owner or employees may do this" })
     @ApiParam({ name: 'resortId', type: String })
-    findAll(@Param('resortId') resortId: string) {
-        return this.resortUserService.findAll(resortId);
+    async findAll(@Param('resortId') resortId: string) {
+        const users = await this.resortUserService.findAll(resortId);
+        return users.map((user) => UserResponseDto.fromEntity(user));
     }
 
     @Get(':userId')
@@ -45,8 +49,9 @@ export class ResortUserController {
     @ApiOperation({ summary: "Get one of a resort's users — only its owner or employees may do this" })
     @ApiParam({ name: 'resortId', type: String })
     @ApiParam({ name: 'userId', type: String })
-    findOne(@Param('resortId') resortId: string, @Param('userId') userId: string) {
-        return this.resortUserService.findOne(resortId, userId);
+    async findOne(@Param('resortId') resortId: string, @Param('userId') userId: string) {
+        const user = await this.resortUserService.findOne(resortId, userId);
+        return UserResponseDto.fromEntity(user);
     }
 
     @Put(':userId')
@@ -54,12 +59,13 @@ export class ResortUserController {
     @ApiOperation({ summary: "Replace one of a resort's users" })
     @ApiParam({ name: 'resortId', type: String })
     @ApiParam({ name: 'userId', type: String })
-    replace(
+    async replace(
         @Param('resortId') resortId: string,
         @Param('userId') userId: string,
         @Body() dto: CreateResortUserDto,
     ) {
-        return this.resortUserService.replace(resortId, userId, dto);
+        const user = await this.resortUserService.replace(resortId, userId, dto);
+        return UserResponseDto.fromEntity(user);
     }
 
     @Patch(':userId')
@@ -67,17 +73,18 @@ export class ResortUserController {
     @ApiOperation({ summary: "Partially update one of a resort's users" })
     @ApiParam({ name: 'resortId', type: String })
     @ApiParam({ name: 'userId', type: String })
-    update(
+    async update(
         @Param('resortId') resortId: string,
         @Param('userId') userId: string,
         @Body() dto: UpdateResortUserDto,
     ) {
-        return this.resortUserService.update(resortId, userId, dto);
+        const user = await this.resortUserService.update(resortId, userId, dto);
+        return UserResponseDto.fromEntity(user);
     }
 
     @Delete(':userId')
-    @UseGuards(ResortOwnerGuard)
-    @ApiOperation({ summary: "Delete one of a resort's users" })
+    @UseGuards(ResortOwnerOrSelfGuard)
+    @ApiOperation({ summary: "Delete one of a resort's users — only its owner, or the user themselves, may do this" })
     @ApiParam({ name: 'resortId', type: String })
     @ApiParam({ name: 'userId', type: String })
     remove(@Param('resortId') resortId: string, @Param('userId') userId: string) {

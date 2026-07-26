@@ -6,15 +6,21 @@ import {
     Param,
     Patch,
     Post,
+    Query,
     UseGuards,
+    UsePipes,
+    ValidationPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResortMemberGuard } from '../resort/guards/resort-member.guard';
 import { ResortOwnerGuard } from '../resort/guards/resort-owner.guard';
 import { ResortContactService } from './resort-contact.service';
 import { CreateResortContactDto } from './dto/create-resort-contact.dto';
 import { UpdateResortContactDto } from './dto/update-resort-contact.dto';
+import { FindResortContactsQueryDto } from './dto/find-resort-contacts-query.dto';
+import { LenientValidationPipe } from '../common/pipes/lenient-validation.pipe';
+import { ResortContactResponseDto } from './dto/resort-contact-response.dto';
 
 @ApiTags('resort-contact')
 @ApiBearerAuth()
@@ -25,18 +31,25 @@ export class ResortContactController {
 
     @Post()
     @UseGuards(ResortOwnerGuard)
+    @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
     @ApiOperation({ summary: 'Create a contact for this resort — only its owner may do this' })
     @ApiParam({ name: 'resortId', type: String })
-    create(@Param('resortId') resortId: string, @Body() dto: CreateResortContactDto) {
-        return this.resortContactService.create(resortId, dto);
+    async create(@Param('resortId') resortId: string, @Body() dto: CreateResortContactDto) {
+        const contact = await this.resortContactService.create(resortId, dto);
+        return ResortContactResponseDto.fromEntity(contact);
     }
 
     @Get()
     @UseGuards(ResortMemberGuard)
     @ApiOperation({ summary: "List a resort's contacts — its owner or employees may do this" })
     @ApiParam({ name: 'resortId', type: String })
-    findAll(@Param('resortId') resortId: string) {
-        return this.resortContactService.findAll(resortId);
+    @ApiQuery({ name: 'search', required: false, type: String, description: 'Case-insensitive search across contact_name and contact' })
+    async findAll(
+        @Param('resortId') resortId: string,
+        @Query(new LenientValidationPipe(FindResortContactsQueryDto)) query: FindResortContactsQueryDto,
+    ) {
+        const contacts = await this.resortContactService.findAll(resortId, query);
+        return contacts.map((contact) => ResortContactResponseDto.fromEntity(contact));
     }
 
     @Get(':id')
@@ -44,8 +57,9 @@ export class ResortContactController {
     @ApiOperation({ summary: "Get one of a resort's contacts — its owner or employees may do this" })
     @ApiParam({ name: 'resortId', type: String })
     @ApiParam({ name: 'id', type: String })
-    findOne(@Param('resortId') resortId: string, @Param('id') id: string) {
-        return this.resortContactService.findOne(resortId, id);
+    async findOne(@Param('resortId') resortId: string, @Param('id') id: string) {
+        const contact = await this.resortContactService.findOne(resortId, id);
+        return ResortContactResponseDto.fromEntity(contact);
     }
 
     @Patch(':id')
@@ -53,12 +67,13 @@ export class ResortContactController {
     @ApiOperation({ summary: "Update one of a resort's contacts — only its owner may do this" })
     @ApiParam({ name: 'resortId', type: String })
     @ApiParam({ name: 'id', type: String })
-    update(
+    async update(
         @Param('resortId') resortId: string,
         @Param('id') id: string,
         @Body() dto: UpdateResortContactDto,
     ) {
-        return this.resortContactService.update(resortId, id, dto);
+        const contact = await this.resortContactService.update(resortId, id, dto);
+        return ResortContactResponseDto.fromEntity(contact);
     }
 
     @Delete(':id')

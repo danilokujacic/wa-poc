@@ -1,10 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ReservationRepository } from '../repository/reservation.repository';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
-import { Reservation } from '../entity/reservation.entity';
+import { ALLOWED_RESERVATION_STATUS_TRANSITIONS, Reservation, ReservationStatus } from '../entity/reservation.entity';
 import { ResortFeature } from '../entity/resort-feature.entity';
+import { FindOperator, FindOptionsWhere, ILike, LessThanOrEqual, MoreThanOrEqual } from "typeorm";
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
+import { FindReservationsQueryDto } from './dto/find-reservations-query.dto';
 
 @Injectable()
 export class ReservationService {
@@ -24,9 +26,32 @@ export class ReservationService {
         return this.reservationRepository.save(reservation);
     }
 
-    findAll(resortId: string): Promise<Reservation[]> {
+    private parseDate(date: string): Date {
+        return new Date(date);
+    }
+
+    findAll(resortId: string, { from = new Date().toString(), to, status = 'ALL', phoneNumber = '' }: FindReservationsQueryDto): Promise<Reservation[]> {
+        const fromISO = this.parseDate(from);
+        const toISO = to ? this.parseDate(to) : undefined;
+        const query: FindOptionsWhere<Reservation> = {
+            feature: { resort: { id: resortId } },
+            startDate: MoreThanOrEqual(fromISO),
+        }
+
+        if (toISO) {
+            query.endDate = LessThanOrEqual(toISO);
+        }
+
+        if (status && status !== 'ALL') {
+            query.status = status;
+        }
+
+        if (phoneNumber) {
+            query.phoneNumber = ILike(`%${phoneNumber}%`);
+        }
+
         return this.reservationRepository.find({
-            where: { feature: { resort: { id: resortId } } },
+            where: query,
             relations: { feature: true },
         });
     }
@@ -52,6 +77,18 @@ export class ReservationService {
         return this.reservationRepository.save(reservation);
     }
 
+    async updateStatus(resortId: string, id: string, status: ReservationStatus): Promise<Reservation> {
+        const reservation = await this.findOne(resortId, id);
+
+        const allowedNextStatuses = ALLOWED_RESERVATION_STATUS_TRANSITIONS[reservation.status];
+        if (!allowedNextStatuses.includes(status)) {
+            throw new BadRequestException(`Cannot change reservation status from ${reservation.status} to ${status}`);
+        }
+
+        reservation.status = status;
+        return this.reservationRepository.save(reservation);
+    }
+
     async remove(resortId: string, id: string): Promise<void> {
         const reservation = await this.findOne(resortId, id);
         await this.reservationRepository.remove(reservation);
@@ -63,12 +100,30 @@ export class ReservationService {
         return Math.max(feature.quantity - activeCount, 0);
     }
 
+    async getAvailabilityForAllFeatures(resortId: string): Promise<Array<{ featureId: string; name: string; availability: number }>> {
+        const features = await this.resortFeatureRepository.find({ where: { resort: { id: resortId }, isActive: true } });
+        if (features.length === 0) {
+            return [];
+        }
+
+        const activeCounts = await this.reservationRepository.countActiveForFeatures(features.map((feature) => feature.id));
+
+        return features.map((feature) => ({
+            featureId: feature.id,
+            name: feature.name,
+            availability: Math.max(feature.quantity - (activeCounts.get(feature.id) ?? 0), 0),
+        }));
+    }
+
     private async ensureFeatureBelongsToResort(resortId: string, featureId: string): Promise<ResortFeature> {
         const feature = await this.resortFeatureRepository.findOne({
             where: { id: featureId, resort: { id: resortId } },
         });
         if (!feature) {
             throw new NotFoundException(`Feature with id ${featureId} not found for resort ${resortId}`);
+        }
+        if (!feature.isActive) {
+            throw new BadRequestException(`Feature with id ${featureId} has been deleted and can no longer be used for reservations`);
         }
         return feature;
     }

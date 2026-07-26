@@ -18,8 +18,14 @@ export class ResortFeature {
     @Column({ type: 'int' })
     quantity: number;
 
+    @Column({ type: 'int' })
+    capacity: number;
+
     @Column('text', { array: true, nullable: true })
     images: string[];
+
+    @Column({ default: true })
+    isActive: boolean;
 
     @ManyToOne(() => Resort, (resort) => resort.features)
     resort: Resort;

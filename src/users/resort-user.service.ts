@@ -5,6 +5,7 @@ import { ResortRepository } from '../repository/resort.repository';
 import { User, UserRole } from '../entity/user.entity';
 import { CreateResortUserDto } from './dto/create-resort-user.dto';
 import { UpdateResortUserDto } from './dto/update-resort-user.dto';
+import { EmailConfirmationService } from '../email-confirmation/email-confirmation.service';
 
 const SALT_ROUNDS = 10;
 
@@ -13,9 +14,10 @@ export class ResortUserService {
     constructor(
         private readonly userRepository: UserRepository,
         private readonly resortRepository: ResortRepository,
+        private readonly emailConfirmationService: EmailConfirmationService,
     ) { }
 
-    async create(resortId: string, dto: CreateResortUserDto): Promise<Omit<User, 'password'>> {
+    async create(resortId: string, dto: CreateResortUserDto): Promise<User> {
         await this.ensureResortExists(resortId);
 
         const existing = await this.userRepository.findByEmail(dto.email);
@@ -33,32 +35,43 @@ export class ResortUserService {
             }),
         );
 
-        return this.toSafeUser(user);
+        await this.emailConfirmationService.createAndSend(user);
+
+        return user;
     }
 
-    async findAll(resortId: string): Promise<Omit<User, 'password'>[]> {
+    async findAll(resortId: string): Promise<User[]> {
         await this.ensureResortExists(resortId);
 
-        const users = await this.userRepository.find({ where: { resort: { id: resortId } } });
-        return users.map((user) => this.toSafeUser(user));
+        return this.userRepository.find({ where: { resort: { id: resortId } } });
     }
 
-    async findOne(resortId: string, userId: string): Promise<Omit<User, 'password'>> {
-        const user = await this.findResortUserOrThrow(resortId, userId);
-        return this.toSafeUser(user);
+    async findOne(resortId: string, userId: string): Promise<User> {
+        return this.findResortUserOrThrow(resortId, userId);
     }
 
-    async replace(resortId: string, userId: string, dto: CreateResortUserDto): Promise<Omit<User, 'password'>> {
+    async findMe(userId: string): Promise<User> {
+        const user = await this.userRepository.findOne({
+            where: { id: userId },
+            relations: { resort: true },
+        });
+        if (!user) {
+            throw new NotFoundException(`User with id ${userId} not found`);
+        }
+        return user;
+    }
+
+    async replace(resortId: string, userId: string, dto: CreateResortUserDto): Promise<User> {
         const user = await this.findResortUserOrThrow(resortId, userId);
 
         user.name = dto.name;
         user.email = dto.email;
         user.password = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
-        return this.toSafeUser(await this.userRepository.save(user));
+        return this.userRepository.save(user);
     }
 
-    async update(resortId: string, userId: string, dto: UpdateResortUserDto): Promise<Omit<User, 'password'>> {
+    async update(resortId: string, userId: string, dto: UpdateResortUserDto): Promise<User> {
         const user = await this.findResortUserOrThrow(resortId, userId);
 
         if (dto.name !== undefined) {
@@ -71,7 +84,7 @@ export class ResortUserService {
             user.password = await bcrypt.hash(dto.password, SALT_ROUNDS);
         }
 
-        return this.toSafeUser(await this.userRepository.save(user));
+        return this.userRepository.save(user);
     }
 
     async remove(resortId: string, userId: string): Promise<void> {
@@ -94,10 +107,5 @@ export class ResortUserService {
             throw new NotFoundException(`User with id ${userId} not found for resort ${resortId}`);
         }
         return user;
-    }
-
-    private toSafeUser(user: User): Omit<User, 'password'> {
-        const { password, ...rest } = user;
-        return rest;
     }
 }

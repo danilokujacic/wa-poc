@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ReservationService } from './reservation.service';
 import { ReservationRepository } from '../repository/reservation.repository';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
@@ -41,8 +41,8 @@ describe('ReservationService', () => {
     });
 
     it('creates a reservation for a feature belonging to the resort', async () => {
-        resortFeatureRepository.findOne.mockResolvedValue({ id: 'feature-1', quantity: 5 });
-        const dto = { featureId: 'feature-1', startDate: '2026-08-01', endDate: '2026-08-03', phoneNumber: '123' };
+        resortFeatureRepository.findOne.mockResolvedValue({ id: 'feature-1', quantity: 5, isActive: true });
+        const dto = { featureId: 'feature-1', startDate: '2026-08-01', endDate: '2026-08-03', phoneNumber: '123', adults: 2, kids: 0 };
 
         const result = await service.create('resort-1', dto);
 
@@ -53,7 +53,9 @@ describe('ReservationService', () => {
             startDate: '2026-08-01',
             endDate: '2026-08-03',
             phoneNumber: '123',
-            feature: { id: 'feature-1', quantity: 5 },
+            adults: 2,
+            kids: 0,
+            feature: { id: 'feature-1', quantity: 5, isActive: true },
         });
         expect(result).toBeDefined();
     });
@@ -62,8 +64,17 @@ describe('ReservationService', () => {
         resortFeatureRepository.findOne.mockResolvedValue(null);
 
         await expect(
-            service.create('resort-1', { featureId: 'other-resort-feature', startDate: '2026-08-01', endDate: '2026-08-03', phoneNumber: '123' }),
+            service.create('resort-1', { featureId: 'other-resort-feature', startDate: '2026-08-01', endDate: '2026-08-03', phoneNumber: '123', adults: 2, kids: 0 }),
         ).rejects.toThrow(NotFoundException);
+        expect(reservationRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects creation when the feature has been soft-deleted', async () => {
+        resortFeatureRepository.findOne.mockResolvedValue({ id: 'feature-1', quantity: 5, isActive: false });
+
+        await expect(
+            service.create('resort-1', { featureId: 'feature-1', startDate: '2026-08-01', endDate: '2026-08-03', phoneNumber: '123', adults: 2, kids: 0 }),
+        ).rejects.toThrow(BadRequestException);
         expect(reservationRepository.create).not.toHaveBeenCalled();
     });
 
@@ -115,7 +126,7 @@ describe('ReservationService', () => {
     });
 
     it('computes availability as quantity minus active reservations', async () => {
-        resortFeatureRepository.findOne.mockResolvedValue({ id: 'feature-1', quantity: 5 });
+        resortFeatureRepository.findOne.mockResolvedValue({ id: 'feature-1', quantity: 5, isActive: true });
         reservationRepository.countActiveForFeature.mockResolvedValue(2);
 
         const result = await service.getAvailability('resort-1', 'feature-1');
@@ -125,7 +136,7 @@ describe('ReservationService', () => {
     });
 
     it('never returns negative availability', async () => {
-        resortFeatureRepository.findOne.mockResolvedValue({ id: 'feature-1', quantity: 2 });
+        resortFeatureRepository.findOne.mockResolvedValue({ id: 'feature-1', quantity: 2, isActive: true });
         reservationRepository.countActiveForFeature.mockResolvedValue(5);
 
         const result = await service.getAvailability('resort-1', 'feature-1');

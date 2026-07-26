@@ -191,7 +191,7 @@ export class MessageFlushProcessor extends WorkerHost {
     }
 
     private async buildFeatureContext(resortId: string): Promise<FeatureAvailability[]> {
-        const features = await this.resortFeatureRepository.find({ where: { resort: { id: resortId } } });
+        const features = await this.resortFeatureRepository.find({ where: { resort: { id: resortId }, isActive: true } });
 
         return Promise.all(
             features.map(async (feature) => {

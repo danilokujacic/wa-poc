@@ -5,11 +5,13 @@ import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { UserRepository } from '../repository/user.repository';
 import { UserRole } from '../entity/user.entity';
+import { EmailConfirmationService } from '../email-confirmation/email-confirmation.service';
 
 describe('AuthService', () => {
     let service: AuthService;
     let userRepository: { findByEmail: jest.Mock; create: jest.Mock; save: jest.Mock };
     let jwtService: { sign: jest.Mock };
+    let emailConfirmationService: { createAndSend: jest.Mock };
 
     beforeEach(async () => {
         userRepository = {
@@ -20,12 +22,16 @@ describe('AuthService', () => {
         jwtService = {
             sign: jest.fn().mockReturnValue('signed-token'),
         };
+        emailConfirmationService = {
+            createAndSend: jest.fn(),
+        };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 AuthService,
                 { provide: UserRepository, useValue: userRepository },
                 { provide: JwtService, useValue: jwtService },
+                { provide: EmailConfirmationService, useValue: emailConfirmationService },
             ],
         }).compile();
 
@@ -49,7 +55,7 @@ describe('AuthService', () => {
             expect.objectContaining({ email: 'jane@example.com', role: UserRole.OWNER }),
         );
         expect(result.accessToken).toBe('signed-token');
-        expect(result.user).not.toHaveProperty('password');
+        expect(result.user.email).toBe('jane@example.com');
     });
 
     it('rejects registration when the email is already taken', async () => {
@@ -73,7 +79,7 @@ describe('AuthService', () => {
         const result = await service.login({ email: 'jane@example.com', password: 'password123' });
 
         expect(result.accessToken).toBe('signed-token');
-        expect(result.user).not.toHaveProperty('password');
+        expect(result.user.email).toBe('jane@example.com');
     });
 
     it('rejects login with an unknown email', async () => {

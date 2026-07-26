@@ -6,6 +6,8 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ACCESS_TOKEN_COOKIE } from './auth.constants';
+import { AuthResponseDto } from './dto/auth-response.dto';
+import { LogoutResponseDto } from './dto/logout-response.dto';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -20,7 +22,7 @@ export class AuthController {
     async register(@Body() registerDto: RegisterDto, @Res({ passthrough: true }) response: Response) {
         const { accessToken, user } = await this.authService.register(registerDto);
         this.setAuthCookie(response, accessToken);
-        return { user };
+        return AuthResponseDto.fromUser(user);
     }
 
     @Post('login')
@@ -29,7 +31,7 @@ export class AuthController {
     async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) response: Response) {
         const { accessToken, user } = await this.authService.login(loginDto);
         this.setAuthCookie(response, accessToken);
-        return { user };
+        return AuthResponseDto.fromUser(user);
     }
 
     @Post('logout')
@@ -37,7 +39,7 @@ export class AuthController {
     @ApiOperation({ summary: 'Clear the auth cookie' })
     logout(@Res({ passthrough: true }) response: Response) {
         response.clearCookie(ACCESS_TOKEN_COOKIE, { path: '/' });
-        return { loggedOut: true };
+        return LogoutResponseDto.create();
     }
 
     private setAuthCookie(response: Response, accessToken: string): void {

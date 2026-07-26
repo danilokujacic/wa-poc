@@ -38,25 +38,37 @@ describe('ResortContactController', () => {
         expect(controller).toBeDefined();
     });
 
-    it('delegates create to the service', () => {
+    it('delegates create to the service', async () => {
         const dto = { contact_name: 'Front Desk', type: ContactType.PHONE, contact: '+382 69 123 456' };
-        controller.create('resort-1', dto);
+        service.create.mockResolvedValue({ id: 'contact-1', ...dto });
+
+        await controller.create('resort-1', dto);
+
         expect(service.create).toHaveBeenCalledWith('resort-1', dto);
     });
 
-    it('delegates findAll to the service', () => {
-        controller.findAll('resort-1');
-        expect(service.findAll).toHaveBeenCalledWith('resort-1');
+    it('delegates findAll to the service', async () => {
+        service.findAll.mockResolvedValue([{ id: 'contact-1', contact_name: 'Front Desk', type: ContactType.PHONE, contact: '+382 69 123 456' }]);
+
+        await controller.findAll('resort-1', {});
+
+        expect(service.findAll).toHaveBeenCalledWith('resort-1', {});
     });
 
-    it('delegates findOne to the service', () => {
-        controller.findOne('resort-1', 'contact-1');
+    it('delegates findOne to the service', async () => {
+        service.findOne.mockResolvedValue({ id: 'contact-1', contact_name: 'Front Desk', type: ContactType.PHONE, contact: '+382 69 123 456' });
+
+        await controller.findOne('resort-1', 'contact-1');
+
         expect(service.findOne).toHaveBeenCalledWith('resort-1', 'contact-1');
     });
 
-    it('delegates update to the service', () => {
+    it('delegates update to the service', async () => {
         const dto = { contact: '+382 69 999 999' };
-        controller.update('resort-1', 'contact-1', dto);
+        service.update.mockResolvedValue({ id: 'contact-1', contact_name: 'Front Desk', type: ContactType.PHONE, contact: '+382 69 999 999' });
+
+        await controller.update('resort-1', 'contact-1', dto);
+
         expect(service.update).toHaveBeenCalledWith('resort-1', 'contact-1', dto);
     });
 

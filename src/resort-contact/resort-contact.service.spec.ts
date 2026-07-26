@@ -48,9 +48,24 @@ describe('ResortContactService', () => {
         const contacts = [{ id: '1', contact_name: 'Front Desk', type: ContactType.PHONE, contact: '+382 69 123 456' }];
         repository.find.mockResolvedValue(contacts);
 
-        const result = await service.findAll('resort-1');
+        const result = await service.findAll('resort-1', {});
 
         expect(repository.find).toHaveBeenCalledWith({ where: { resort: { id: 'resort-1' } } });
+        expect(result).toBe(contacts);
+    });
+
+    it('searches both contact_name and contact, case-insensitively', async () => {
+        const contacts = [{ id: '1', contact_name: 'Front Desk', type: ContactType.PHONE, contact: '+382 69 123 456' }];
+        repository.find.mockResolvedValue(contacts);
+
+        const result = await service.findAll('resort-1', { search: 'front' });
+
+        expect(repository.find).toHaveBeenCalledWith({
+            where: [
+                { resort: { id: 'resort-1' }, contact_name: expect.anything() },
+                { resort: { id: 'resort-1' }, contact: expect.anything() },
+            ],
+        });
         expect(result).toBe(contacts);
     });
 

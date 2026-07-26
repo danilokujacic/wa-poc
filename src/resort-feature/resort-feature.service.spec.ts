@@ -2,10 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { ResortFeatureService } from './resort-feature.service';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
+import { ReservationRepository } from '../repository/reservation.repository';
 
 describe('ResortFeatureService', () => {
     let service: ResortFeatureService;
     let repository: { create: jest.Mock; save: jest.Mock; find: jest.Mock; findOne: jest.Mock; remove: jest.Mock };
+    let reservationRepository: { declinePendingForFeature: jest.Mock };
 
     beforeEach(async () => {
         repository = {
@@ -15,11 +17,15 @@ describe('ResortFeatureService', () => {
             findOne: jest.fn(),
             remove: jest.fn(),
         };
+        reservationRepository = {
+            declinePendingForFeature: jest.fn(),
+        };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ResortFeatureService,
                 { provide: ResortFeatureRepository, useValue: repository },
+                { provide: ReservationRepository, useValue: reservationRepository },
             ],
         }).compile();
 
@@ -31,7 +37,7 @@ describe('ResortFeatureService', () => {
     });
 
     it('creates a feature for a resort', async () => {
-        const dto = { name: 'Cabana', price: 49.99, quantity: 5 };
+        const dto = { name: 'Cabana', price: 49.99, quantity: 5, capacity: 2 };
 
         const result = await service.create('resort-1', dto);
 
@@ -39,6 +45,7 @@ describe('ResortFeatureService', () => {
             name: 'Cabana',
             price: 49.99,
             quantity: 5,
+            capacity: 2,
             resort: { id: 'resort-1' },
         });
         expect(repository.save).toHaveBeenCalled();
@@ -46,6 +53,7 @@ describe('ResortFeatureService', () => {
             name: 'Cabana',
             price: 49.99,
             quantity: 5,
+            capacity: 2,
             resort: { id: 'resort-1' },
         });
     });
@@ -56,7 +64,7 @@ describe('ResortFeatureService', () => {
 
         const result = await service.findAll('resort-1');
 
-        expect(repository.find).toHaveBeenCalledWith({ where: { resort: { id: 'resort-1' } } });
+        expect(repository.find).toHaveBeenCalledWith({ where: { resort: { id: 'resort-1' }, isActive: true } });
         expect(result).toBe(features);
     });
 
@@ -86,12 +94,22 @@ describe('ResortFeatureService', () => {
         expect(result.price).toBe(59.99);
     });
 
-    it('removes a feature', async () => {
-        const feature = { id: '1', name: 'Cabana', price: 49.99, quantity: 5 };
+    it('soft-deletes a feature by marking it inactive, rather than removing the row', async () => {
+        const feature = { id: '1', name: 'Cabana', price: 49.99, quantity: 5, isActive: true };
         repository.findOne.mockResolvedValue(feature);
 
         await service.remove('resort-1', '1');
 
-        expect(repository.remove).toHaveBeenCalledWith(feature);
+        expect(repository.save).toHaveBeenCalledWith({ ...feature, isActive: false });
+        expect(repository.remove).not.toHaveBeenCalled();
+    });
+
+    it('declines pending reservations for the feature being removed', async () => {
+        const feature = { id: '1', name: 'Cabana', price: 49.99, quantity: 5, isActive: true };
+        repository.findOne.mockResolvedValue(feature);
+
+        await service.remove('resort-1', '1');
+
+        expect(reservationRepository.declinePendingForFeature).toHaveBeenCalledWith('1');
     });
 });

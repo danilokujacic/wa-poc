@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
+import { ReservationRepository } from '../repository/reservation.repository';
 import { ResortFeature } from '../entity/resort-feature.entity';
 import { CreateResortFeatureDto } from './dto/create-resort-feature.dto';
 import { UpdateResortFeatureDto } from './dto/update-resort-feature.dto';
 
 @Injectable()
 export class ResortFeatureService {
-    constructor(private readonly resortFeatureRepository: ResortFeatureRepository) { }
+    constructor(
+        private readonly resortFeatureRepository: ResortFeatureRepository,
+        private readonly reservationRepository: ReservationRepository,
+    ) { }
 
     create(resortId: string, createResortFeatureDto: CreateResortFeatureDto): Promise<ResortFeature> {
         const feature = this.resortFeatureRepository.create({
@@ -17,7 +21,7 @@ export class ResortFeatureService {
     }
 
     findAll(resortId: string): Promise<ResortFeature[]> {
-        return this.resortFeatureRepository.find({ where: { resort: { id: resortId } } });
+        return this.resortFeatureRepository.find({ where: { resort: { id: resortId }, isActive: true } });
     }
 
     async findOne(resortId: string, id: string): Promise<ResortFeature> {
@@ -38,6 +42,8 @@ export class ResortFeatureService {
 
     async remove(resortId: string, id: string): Promise<void> {
         const feature = await this.findOne(resortId, id);
-        await this.resortFeatureRepository.remove(feature);
+        feature.isActive = false;
+        await this.resortFeatureRepository.save(feature);
+        await this.reservationRepository.declinePendingForFeature(id);
     }
 }

@@ -1,11 +1,21 @@
+import * as bcrypt from 'bcrypt';
 import dataSource from './data-source';
 import { Resort } from './entity/resort.entity';
 import { Faq } from './entity/faq.entity';
 import { ResortFeature } from './entity/resort-feature.entity';
 import { ResortContact, ContactType } from './entity/resort-contact.entity';
 import { Reservation, ReservationStatus } from './entity/reservation.entity';
+import { User, UserRole } from './entity/user.entity';
+
+const SALT_ROUNDS = 10;
 
 const RESORT_PHONE_NUMBER = '1211777188687734';
+
+const OWNER_USER = {
+    name: 'Danilo Kujacic',
+    email: 'danilo.kujacic01@gmail.com',
+    password: 'logika123',
+};
 
 const RESORT_DETAILS = {
     address: 'Paradise Beach bb, 85310 Budva, Montenegro',
@@ -39,12 +49,13 @@ const FAQS: Array<{ question: string; answer: string }> = [
     },
 ];
 
-const FEATURES: Array<{ name: string; description: string; price: number; quantity: number; images: string[] }> = [
+const FEATURES: Array<{ name: string; description: string; price: number; quantity: number; capacity: number; images: string[] }> = [
     {
         name: 'Private Cabana',
         description: 'A private beachfront cabana for two, with sun loungers and shade.',
         price: 49.99,
         quantity: 6,
+        capacity: 2,
         images: ['https://bucket.example.com/cabana-1.jpg'],
     },
     {
@@ -52,6 +63,7 @@ const FEATURES: Array<{ name: string; description: string; price: number; quanti
         description: 'A double room with a private balcony overlooking Paradise Beach.',
         price: 129.0,
         quantity: 10,
+        capacity: 2,
         images: ['https://bucket.example.com/deluxe-room-1.jpg'],
     },
     {
@@ -59,6 +71,7 @@ const FEATURES: Array<{ name: string; description: string; price: number; quanti
         description: 'One hour of guided jet ski rental along the coast.',
         price: 65.0,
         quantity: 3,
+        capacity: 1,
         images: [],
     },
 ];
@@ -76,6 +89,7 @@ async function seed() {
     const featureRepo = dataSource.getRepository(ResortFeature);
     const contactRepo = dataSource.getRepository(ResortContact);
     const reservationRepo = dataSource.getRepository(Reservation);
+    const userRepo = dataSource.getRepository(User);
 
     let resort = await resortRepo.findOne({ where: { phoneNumber: RESORT_PHONE_NUMBER } });
     if (!resort) {
@@ -152,9 +166,29 @@ async function seed() {
                 startDate,
                 endDate,
                 phoneNumber: '38269280401',
+                adults: 2,
+                kids: 0,
             }),
         );
         console.log(`  + Sample reservation for "${sampleFeature.name}"`);
+    }
+
+    let ownerUser = await userRepo.findOne({ where: { email: OWNER_USER.email } });
+    if (!ownerUser) {
+        const hashedPassword = await bcrypt.hash(OWNER_USER.password, SALT_ROUNDS);
+        ownerUser = await userRepo.save(
+            userRepo.create({
+                name: OWNER_USER.name,
+                email: OWNER_USER.email,
+                password: hashedPassword,
+                role: UserRole.OWNER,
+                emailConfirmed: true,
+                resort,
+            }),
+        );
+        console.log(`  + Owner user: ${ownerUser.email}`);
+    } else {
+        console.log(`Owner user "${ownerUser.email}" already exists`);
     }
 
     await dataSource.destroy();

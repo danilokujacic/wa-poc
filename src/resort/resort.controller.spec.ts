@@ -37,26 +37,38 @@ describe('ResortController', () => {
         expect(controller).toBeDefined();
     });
 
-    it('delegates create to the service with the authenticated user id', () => {
+    it('delegates create to the service with the authenticated user id', async () => {
         const dto = { name: 'Sunset Bay', phoneNumber: '123' };
         const request = { user: { sub: 'user-1', email: 'a@b.com', role: 'Owner', resortId: null } } as any;
-        controller.create(dto, request);
+        service.create.mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', phoneNumber: '123' });
+
+        await controller.create(dto, request);
+
         expect(service.create).toHaveBeenCalledWith(dto, 'user-1');
     });
 
-    it('delegates findAll to the service', () => {
-        controller.findAll();
+    it('delegates findAll to the service', async () => {
+        service.findAll.mockResolvedValue([{ id: 'resort-1', name: 'Sunset Bay', phoneNumber: '123' }]);
+
+        await controller.findAll();
+
         expect(service.findAll).toHaveBeenCalled();
     });
 
-    it('delegates findOne to the service', () => {
-        controller.findOne('1');
+    it('delegates findOne to the service', async () => {
+        service.findOne.mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', phoneNumber: '123' });
+
+        await controller.findOne('1');
+
         expect(service.findOne).toHaveBeenCalledWith('1');
     });
 
-    it('delegates update to the service', () => {
+    it('delegates update to the service', async () => {
         const dto = { name: 'New Name' };
-        controller.update('1', dto);
+        service.update.mockResolvedValue({ id: 'resort-1', name: 'New Name', phoneNumber: '123' });
+
+        await controller.update('1', dto);
+
         expect(service.update).toHaveBeenCalledWith('1', dto);
     });
 

@@ -6,12 +6,13 @@ import { ReservationRepository } from '../repository/reservation.repository';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
 import { ReservationController } from './reservation.controller';
 import { ReservationService } from './reservation.service';
+import { ReservationStatusScheduler } from './reservation-status.scheduler';
 import { ResortMemberGuard } from '../resort/guards/resort-member.guard';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
     imports: [TypeOrmModule.forFeature([Reservation, ResortFeature]), AuthModule],
-    providers: [ReservationRepository, ResortFeatureRepository, ReservationService, ResortMemberGuard],
+    providers: [ReservationRepository, ResortFeatureRepository, ReservationService, ResortMemberGuard, ReservationStatusScheduler],
     exports: [ReservationRepository, ReservationService],
     controllers: [ReservationController],
 })

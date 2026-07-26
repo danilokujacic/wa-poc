@@ -34,25 +34,37 @@ describe('FaqController', () => {
         expect(controller).toBeDefined();
     });
 
-    it('delegates create to the service', () => {
+    it('delegates create to the service', async () => {
         const dto = { question: 'Where?', answer: 'Here' };
-        controller.create('resort-1', dto);
+        service.create.mockResolvedValue({ id: 1, ...dto });
+
+        await controller.create('resort-1', dto);
+
         expect(service.create).toHaveBeenCalledWith('resort-1', dto);
     });
 
-    it('delegates findAll to the service', () => {
-        controller.findAll('resort-1');
-        expect(service.findAll).toHaveBeenCalledWith('resort-1');
+    it('delegates findAll to the service', async () => {
+        service.findAll.mockResolvedValue({ data: [{ id: 1, question: 'Where?', answer: 'Here' }], total: 1, page: 1, limit: 10 });
+
+        await controller.findAll('resort-1', {});
+
+        expect(service.findAll).toHaveBeenCalledWith('resort-1', {});
     });
 
-    it('delegates findOne to the service', () => {
-        controller.findOne('resort-1', 1);
+    it('delegates findOne to the service', async () => {
+        service.findOne.mockResolvedValue({ id: 1, question: 'Where?', answer: 'Here' });
+
+        await controller.findOne('resort-1', 1);
+
         expect(service.findOne).toHaveBeenCalledWith('resort-1', 1);
     });
 
-    it('delegates update to the service', () => {
+    it('delegates update to the service', async () => {
         const dto = { answer: 'New answer' };
-        controller.update('resort-1', 1, dto);
+        service.update.mockResolvedValue({ id: 1, question: 'Where?', answer: 'New answer' });
+
+        await controller.update('resort-1', 1, dto);
+
         expect(service.update).toHaveBeenCalledWith('resort-1', 1, dto);
     });
 

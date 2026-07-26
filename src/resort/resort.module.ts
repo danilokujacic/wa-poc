@@ -6,8 +6,6 @@ import { ResortRepository } from '../repository/resort.repository';
 import { UserRepository } from '../repository/user.repository';
 import { ResortController } from './resort.controller';
 import { ResortService } from './resort.service';
-import { ResortUserController } from './resort-user.controller';
-import { ResortUserService } from './resort-user.service';
 import { ResortOwnerGuard } from './guards/resort-owner.guard';
 import { ResortMemberGuard } from './guards/resort-member.guard';
 import { ResortContextService } from './resort-context.service';
@@ -20,12 +18,11 @@ import { RedisModule } from '../redis/redis.module';
         ResortRepository,
         ResortService,
         UserRepository,
-        ResortUserService,
         ResortOwnerGuard,
         ResortMemberGuard,
         ResortContextService,
     ],
     exports: [ResortRepository, ResortContextService],
-    controllers: [ResortController, ResortUserController],
+    controllers: [ResortController],
 })
 export class ResortModule { }

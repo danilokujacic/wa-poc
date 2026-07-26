@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Post, Query, UseGuards } from '@nestjs
 import { WhatsappService } from './whatsapp.service';
 import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
 import { GlobalWebhookThrottlerGuard } from './guards/global-webhook-throttler.guard';
+import { WebhookAckResponseDto } from './dto/webhook-ack-response.dto';
 
 @Controller('whatsapp')
 export class WhatsappController {
@@ -32,7 +33,7 @@ export class WhatsappController {
         this.whatsappService.processIncoming(body).catch((err) => {
             console.error('Error processing webhook event:', err);
         });
-        return { status: 'handled' };
+        return WebhookAckResponseDto.create();
     }
 
 

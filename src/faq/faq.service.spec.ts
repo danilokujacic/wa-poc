@@ -5,13 +5,14 @@ import { FaqRepository } from '../repository/faq.repository';
 
 describe('FaqService', () => {
     let service: FaqService;
-    let repository: { create: jest.Mock; save: jest.Mock; find: jest.Mock; findOne: jest.Mock; remove: jest.Mock };
+    let repository: { create: jest.Mock; save: jest.Mock; find: jest.Mock; findAndCount: jest.Mock; findOne: jest.Mock; remove: jest.Mock };
 
     beforeEach(async () => {
         repository = {
             create: jest.fn((dto) => dto),
             save: jest.fn(async (entity) => entity),
             find: jest.fn(),
+            findAndCount: jest.fn(),
             findOne: jest.fn(),
             remove: jest.fn(),
         };
@@ -48,14 +49,37 @@ describe('FaqService', () => {
         });
     });
 
-    it('returns all faqs for a resort', async () => {
+    it('returns all faqs for a resort, paginated', async () => {
         const faqs = [{ id: 1, question: 'Where?', answer: 'Here' }];
-        repository.find.mockResolvedValue(faqs);
+        repository.findAndCount.mockResolvedValue([faqs, 1]);
 
-        const result = await service.findAll('resort-1');
+        const result = await service.findAll('resort-1', {});
 
-        expect(repository.find).toHaveBeenCalledWith({ where: { resort: { id: 'resort-1' } } });
-        expect(result).toBe(faqs);
+        expect(repository.findAndCount).toHaveBeenCalledWith({
+            where: { resort: { id: 'resort-1' } },
+            order: { id: 'ASC' },
+            skip: 0,
+            take: 10,
+        });
+        expect(result).toEqual({ data: faqs, total: 1, page: 1, limit: 10 });
+    });
+
+    it('searches both question and answer, case-insensitively', async () => {
+        const faqs = [{ id: 1, question: 'Where?', answer: 'Here' }];
+        repository.findAndCount.mockResolvedValue([faqs, 1]);
+
+        const result = await service.findAll('resort-1', { search: 'here' });
+
+        expect(repository.findAndCount).toHaveBeenCalledWith({
+            where: [
+                { resort: { id: 'resort-1' }, question: expect.anything() },
+                { resort: { id: 'resort-1' }, answer: expect.anything() },
+            ],
+            order: { id: 'ASC' },
+            skip: 0,
+            take: 10,
+        });
+        expect(result).toEqual({ data: faqs, total: 1, page: 1, limit: 10 });
     });
 
     it('returns a faq by id scoped to its resort', async () => {

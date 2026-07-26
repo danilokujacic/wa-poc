@@ -5,6 +5,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { ResortModule } from './resort/resort.module';
@@ -12,6 +13,8 @@ import { FaqModule } from './faq/faq.module';
 import { ResortFeatureModule } from './resort-feature/resort-feature.module';
 import { ResortContactModule } from './resort-contact/resort-contact.module';
 import { ReservationModule } from './reservation/reservation.module';
+import { UsersModule } from './users/users.module';
+import { PhoneChangeModule } from './phone-change/phone-change.module';
 // import { BullmqModule } from './bullmq/bullmq.module';
 import { AuthModule } from './auth/auth.module';
 import appConfig from './config/app.config';
@@ -25,6 +28,8 @@ import appConfig from './config/app.config';
     useFactory: (configService: ConfigService) => ({
       pinoHttp: {
         level: 'debug',
+        customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+        customErrorMessage: (req, res, err) => `${req.method} ${req.url} ${res.statusCode} - ${err.message}`,
         transport: {
           targets: [
             {
@@ -33,6 +38,7 @@ import appConfig from './config/app.config';
                 colorize: true,
                 singleLine: true,
                 translateTime: 'HH:MM:ss',
+                ignore: 'pid,hostname,req,res',
               },
               level: 'debug',
             },
@@ -50,7 +56,7 @@ import appConfig from './config/app.config';
         },
       },
     }),
-  }), WhatsappModule, ResortModule, FaqModule, ResortFeatureModule, ResortContactModule, ReservationModule, ThrottlerModule.forRoot([
+  }), WhatsappModule, ResortModule, FaqModule, ResortFeatureModule, ResortContactModule, ReservationModule, UsersModule, PhoneChangeModule, ThrottlerModule.forRoot([
     {
       name: 'default',
       ttl: Number(process.env.WEBHOOK_RATE_LIMIT_WINDOW_MS ?? 60_000),
@@ -74,7 +80,7 @@ import appConfig from './config/app.config';
       entities: [join(__dirname, '**/entity/*.entity{.ts,.js}')],
       synchronize: process.env.NODE_ENV === 'development',        // DEV ONLY — auto-creates tables from entities
     }),
-  }), AuthModule,],
+  }), AuthModule, ScheduleModule.forRoot(),],
   providers: [AppService],
 })
 export class AppModule { }

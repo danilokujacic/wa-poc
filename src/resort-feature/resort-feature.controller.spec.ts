@@ -37,25 +37,37 @@ describe('ResortFeatureController', () => {
         expect(controller).toBeDefined();
     });
 
-    it('delegates create to the service', () => {
-        const dto = { name: 'Cabana', price: 49.99, quantity: 5 };
-        controller.create('resort-1', dto);
+    it('delegates create to the service', async () => {
+        const dto = { name: 'Cabana', price: 49.99, quantity: 5, capacity: 2 };
+        service.create.mockResolvedValue({ id: 'feature-1', ...dto });
+
+        await controller.create('resort-1', dto);
+
         expect(service.create).toHaveBeenCalledWith('resort-1', dto);
     });
 
-    it('delegates findAll to the service', () => {
-        controller.findAll('resort-1');
+    it('delegates findAll to the service', async () => {
+        service.findAll.mockResolvedValue([{ id: 'feature-1', name: 'Cabana', price: 49.99, quantity: 5, capacity: 2 }]);
+
+        await controller.findAll('resort-1');
+
         expect(service.findAll).toHaveBeenCalledWith('resort-1');
     });
 
-    it('delegates findOne to the service', () => {
-        controller.findOne('resort-1', 'feature-1');
+    it('delegates findOne to the service', async () => {
+        service.findOne.mockResolvedValue({ id: 'feature-1', name: 'Cabana', price: 49.99, quantity: 5, capacity: 2 });
+
+        await controller.findOne('resort-1', 'feature-1');
+
         expect(service.findOne).toHaveBeenCalledWith('resort-1', 'feature-1');
     });
 
-    it('delegates update to the service', () => {
+    it('delegates update to the service', async () => {
         const dto = { price: 59.99 };
-        controller.update('resort-1', 'feature-1', dto);
+        service.update.mockResolvedValue({ id: 'feature-1', name: 'Cabana', price: 59.99, quantity: 5, capacity: 2 });
+
+        await controller.update('resort-1', 'feature-1', dto);
+
         expect(service.update).toHaveBeenCalledWith('resort-1', 'feature-1', dto);
     });
 

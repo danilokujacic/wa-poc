@@ -40,7 +40,7 @@ describe('AuthController', () => {
 
     it('registers, sets the auth cookie and omits the token from the body', async () => {
         const dto = { name: 'Jane Doe', email: 'jane@example.com', password: 'password123' };
-        const user = { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com' };
+        const user = { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', role: 'Owner', emailConfirmed: false, resort: null };
         service.register.mockResolvedValue({ accessToken: 'signed-token', user });
 
         const result = await controller.register(dto, response as any);
@@ -51,12 +51,14 @@ describe('AuthController', () => {
             'signed-token',
             expect.objectContaining({ httpOnly: true, sameSite: 'lax' }),
         );
-        expect(result).toEqual({ user });
+        expect(result).toEqual({
+            user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', role: 'Owner', emailConfirmed: false, resortId: null },
+        });
     });
 
     it('logs in, sets the auth cookie and omits the token from the body', async () => {
         const dto = { email: 'jane@example.com', password: 'password123' };
-        const user = { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com' };
+        const user = { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', role: 'Owner', emailConfirmed: true, resort: null };
         service.login.mockResolvedValue({ accessToken: 'signed-token', user });
 
         const result = await controller.login(dto, response as any);
@@ -67,7 +69,9 @@ describe('AuthController', () => {
             'signed-token',
             expect.objectContaining({ httpOnly: true, sameSite: 'lax' }),
         );
-        expect(result).toEqual({ user });
+        expect(result).toEqual({
+            user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', role: 'Owner', emailConfirmed: true, resortId: null },
+        });
     });
 
     it('clears the auth cookie on logout', () => {

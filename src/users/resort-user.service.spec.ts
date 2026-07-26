@@ -4,11 +4,13 @@ import { ResortUserService } from './resort-user.service';
 import { UserRepository } from '../repository/user.repository';
 import { ResortRepository } from '../repository/resort.repository';
 import { UserRole } from '../entity/user.entity';
+import { EmailConfirmationService } from '../email-confirmation/email-confirmation.service';
 
 describe('ResortUserService', () => {
     let service: ResortUserService;
     let userRepository: { create: jest.Mock; save: jest.Mock; find: jest.Mock; findOne: jest.Mock; findByEmail: jest.Mock; remove: jest.Mock };
     let resortRepository: { findOneBy: jest.Mock };
+    let emailConfirmationService: { createAndSend: jest.Mock };
 
     beforeEach(async () => {
         userRepository = {
@@ -22,12 +24,16 @@ describe('ResortUserService', () => {
         resortRepository = {
             findOneBy: jest.fn(),
         };
+        emailConfirmationService = {
+            createAndSend: jest.fn(),
+        };
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ResortUserService,
                 { provide: UserRepository, useValue: userRepository },
                 { provide: ResortRepository, useValue: resortRepository },
+                { provide: EmailConfirmationService, useValue: emailConfirmationService },
             ],
         }).compile();
 
@@ -51,7 +57,7 @@ describe('ResortUserService', () => {
         expect(userRepository.create).toHaveBeenCalledWith(
             expect.objectContaining({ role: UserRole.EMPLOYEE, resort: { id: 'resort-1' } }),
         );
-        expect(result).not.toHaveProperty('password');
+        expect(result.role).toBe(UserRole.EMPLOYEE);
     });
 
     it('throws when the resort does not exist on create', async () => {
@@ -78,7 +84,7 @@ describe('ResortUserService', () => {
         const result = await service.findAll('resort-1');
 
         expect(userRepository.find).toHaveBeenCalledWith({ where: { resort: { id: 'resort-1' } } });
-        expect(result[0]).not.toHaveProperty('password');
+        expect(result[0].id).toBe('user-1');
     });
 
     it('throws when getting one user that does not belong to the resort', async () => {
@@ -98,7 +104,6 @@ describe('ResortUserService', () => {
 
         expect(result.name).toBe('New Name');
         expect(result.email).toBe('new@example.com');
-        expect(result).not.toHaveProperty('password');
     });
 
     it('partially updates a user', async () => {
