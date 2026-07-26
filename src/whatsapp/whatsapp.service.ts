@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { MessageBatchProducer } from 'src/bullmq/messages/messages.producer';
+import { ResortContextService } from 'src/resort/resort-context.service';
+import { DESK_EVENTS } from 'src/desk/desk.events';
+import type { MessageReceivedEvent } from 'src/desk/desk.events';
 
 const GRAPH_API = 'https://graph.facebook.com/v21.0';
 
@@ -9,6 +13,8 @@ export class WhatsappService {
 
     constructor(
         private readonly producer: MessageBatchProducer,
+        private readonly resortContextService: ResortContextService,
+        private readonly eventEmitter: EventEmitter2,
         @InjectPinoLogger(WhatsappService.name) private readonly logger: PinoLogger,
     ) { }
 
@@ -47,6 +53,8 @@ export class WhatsappService {
         const guestText = message.text.body;
         this.logger.info(`Message from ${guestName} (${guestNumber}): ${guestText}`);
 
+        await this.recordInboundMessageForDesk(`${phoneNumberId}:${guestNumber}`, phoneNumberId, guestNumber, guestText);
+
         try {
             await this.producer.addMessage(
                 {
@@ -69,8 +77,35 @@ export class WhatsappService {
             );
             this.logger.error(`Error adding message to queue: ${error}`);
         }
+    }
 
+    /**
+     * Persists the raw guest message + broadcasts it to the desk immediately, decoupled from
+     * the AI debounce/batch pipeline above — employees watching the desk shouldn't wait out the
+     * debounce window to see what a guest actually typed. Never throws: a desk-recording failure
+     * must never block the AI reply pipeline, which is a separate concern with its own retries.
+     */
+    private async recordInboundMessageForDesk(
+        conversationKey: string,
+        phoneNumberId: string,
+        guestNumber: string,
+        guestText: string,
+    ): Promise<void> {
+        try {
+            const resort = await this.resortContextService.get(conversationKey, phoneNumberId);
+            if (!resort) {
+                return;
+            }
 
+            const event: MessageReceivedEvent = {
+                resortId: resort.id,
+                guestPhoneNumber: guestNumber,
+                body: guestText,
+            };
+            this.eventEmitter.emit(DESK_EVENTS.MESSAGE_RECEIVED, event);
+        } catch (error) {
+            this.logger.error(`Error recording inbound message for desk: ${error}`);
+        }
     }
 
     async sendText(

@@ -9,6 +9,9 @@ import { MessageBatchProducer } from "./messages.producer";
 import { MessageFlushProcessor } from "./messages.processor";
 import { AiService } from "src/ai/ai.service";
 import { ReservationStatus } from "src/entity/reservation.entity";
+import { ConversationRepository } from "src/repository/conversation.repository";
+import { EventEmitter2 } from "@nestjs/event-emitter";
+import { DESK_EVENTS } from "src/desk/desk.events";
 
 function mockRedis(overrides: Partial<Record<'get' | 'incr' | 'expire' | 'set' | 'del', jest.Mock>> = {}) {
     return {
@@ -72,6 +75,18 @@ describe('MessageProcessor', () => {
                     },
                 },
                 {
+                    provide: ConversationRepository,
+                    useValue: {
+                        isHumanHandled: jest.fn().mockResolvedValue(false),
+                    },
+                },
+                {
+                    provide: EventEmitter2,
+                    useValue: {
+                        emit: jest.fn(),
+                    },
+                },
+                {
                     provide: MESSAGE_SENDER,
                     useValue: {
                         sendText: jest.fn(),
@@ -106,6 +121,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn() } as any,
             { find: jest.fn() } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: jest.fn() } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -131,6 +148,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue(null) } as any,
             { find: jest.fn() } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -141,6 +160,63 @@ describe('MessageProcessor', () => {
         expect(mockDrain).toHaveBeenCalledWith('123:456');
         expect(mockGenerateReply).toHaveBeenCalledWith('John Doe', expect.any(String));
         expect(mockSendText).toHaveBeenCalledWith('123', '456', 'I am fine, thank you!');
+    });
+    it('emits a desk AI-replied event once it resolves a resort', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'Hello', timestamp: 1234567890 },
+        ]);
+        const mockGenerateReply = jest.fn().mockResolvedValue('I am fine, thank you!');
+        const mockSendText = jest.fn();
+        const mockEmit = jest.fn();
+        const resort = { id: 'resort-1' };
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockResolvedValue(resort) } as any,
+            { find: jest.fn().mockResolvedValue([]) } as any,
+            { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn().mockResolvedValue(0) } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: mockEmit } as any,
+            { sendText: mockSendText } as any,
+            mockRedis() as any,
+            mockLogger() as any,
+        );
+
+        await processor.process(job);
+
+        expect(mockSendText).toHaveBeenCalledWith('123', '456', 'I am fine, thank you!');
+        expect(mockEmit).toHaveBeenCalledWith(DESK_EVENTS.AI_REPLIED, {
+            resortId: 'resort-1',
+            guestPhoneNumber: '456',
+            body: 'I am fine, thank you!',
+        });
+    });
+    it('skips AI generation entirely once an employee has taken over the conversation', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'Hello', timestamp: 1234567890 },
+        ]);
+        const mockGenerateReply = jest.fn();
+        const mockSendText = jest.fn();
+        const resort = { id: 'resort-1' };
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockResolvedValue(resort) } as any,
+            { find: jest.fn().mockResolvedValue([]) } as any,
+            { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn().mockResolvedValue(0) } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(true) } as any,
+            { emit: jest.fn() } as any,
+            { sendText: mockSendText } as any,
+            mockRedis() as any,
+            mockLogger() as any,
+        );
+
+        await processor.process(job);
+
+        expect(mockGenerateReply).not.toHaveBeenCalled();
+        expect(mockSendText).not.toHaveBeenCalled();
     });
     it('replies gracefully instead of throwing when the AI service fails', async () => {
         const mockDrain = jest.fn().mockResolvedValue([
@@ -158,6 +234,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue(null) } as any,
             { find: jest.fn() } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             redis as any,
             mockLogger() as any,
@@ -197,6 +275,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue(resort) } as any,
             { find: jest.fn().mockResolvedValue([]) } as any,
             { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -223,6 +303,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue(null) } as any,
             { find: jest.fn() } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -249,6 +331,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue(null) } as any,
             { find: jest.fn() } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -279,6 +363,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockRejectedValue(new Error('Resort context error')) } as any,
             { find: jest.fn() } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -309,6 +395,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
             { find: jest.fn().mockRejectedValue(new Error('Resort features error')) } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -341,6 +429,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue(null) } as any,
             { find: jest.fn() } as any,
             { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -365,6 +455,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue(null) } as any,
             { find: mockFind } as any,
             { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: jest.fn() } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -390,6 +482,8 @@ describe('MessageProcessor', () => {
             { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
             { find: mockFind } as any,
             { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: mockCountActive } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: jest.fn() } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -427,6 +521,8 @@ describe('MessageProcessor', () => {
                 create: mockCreate,
                 save: mockSave,
             } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -465,6 +561,8 @@ describe('MessageProcessor', () => {
                 create: jest.fn(),
                 save: mockSave,
             } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: jest.fn() } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -495,6 +593,8 @@ describe('MessageProcessor', () => {
                 countActiveForFeature: jest.fn(),
                 save: mockSave,
             } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             redis as any,
             mockLogger() as any,
@@ -528,6 +628,8 @@ describe('MessageProcessor', () => {
                 countActiveForFeature: jest.fn(),
                 save: mockSave,
             } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
             { sendText: mockSendText } as any,
             mockRedis() as any,
             mockLogger() as any,
@@ -554,6 +656,8 @@ describe('MessageProcessor', () => {
                 { get: jest.fn().mockResolvedValue(null) } as any,
                 { find: jest.fn() } as any,
                 { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
+                { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+                { emit: jest.fn() } as any,
                 { sendText: mockSendText } as any,
                 redis as any,
                 mockLogger() as any,
@@ -578,6 +682,8 @@ describe('MessageProcessor', () => {
                 { get: jest.fn().mockResolvedValue(null) } as any,
                 { find: jest.fn() } as any,
                 { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
+                { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+                { emit: jest.fn() } as any,
                 { sendText: jest.fn() } as any,
                 redis as any,
                 mockLogger() as any,
@@ -603,6 +709,8 @@ describe('MessageProcessor', () => {
                 { get: jest.fn().mockResolvedValue(null) } as any,
                 { find: jest.fn() } as any,
                 { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
+                { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+                { emit: jest.fn() } as any,
                 { sendText: mockSendText } as any,
                 redis as any,
                 mockLogger() as any,

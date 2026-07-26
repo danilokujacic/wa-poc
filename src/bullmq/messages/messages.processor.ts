@@ -1,5 +1,6 @@
 import { Inject } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Job } from 'bullmq';
 import Redis from 'ioredis';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
@@ -14,10 +15,13 @@ import { AiService } from 'src/ai/ai.service';
 import { ResortContextService } from 'src/resort/resort-context.service';
 import { ResortFeatureRepository } from 'src/repository/resort-feature.repository';
 import { ReservationRepository } from 'src/repository/reservation.repository';
+import { ConversationRepository } from 'src/repository/conversation.repository';
 import { REDIS_CLIENT } from 'src/redis/redis.provider';
 import type { Resort } from 'src/entity/resort.entity';
 import type { ResortFeature } from 'src/entity/resort-feature.entity';
 import { ReservationStatus } from 'src/entity/reservation.entity';
+import { DESK_EVENTS } from 'src/desk/desk.events';
+import type { AiRepliedEvent } from 'src/desk/desk.events';
 
 const RESERVATION_MARKER_REGEX = /\[RESERVE feature="([^"]+)" start="(\d{4}-\d{2}-\d{2})" end="(\d{4}-\d{2}-\d{2})"\]/;
 
@@ -60,6 +64,8 @@ export class MessageFlushProcessor extends WorkerHost {
         private readonly resortContextService: ResortContextService,
         private readonly resortFeatureRepository: ResortFeatureRepository,
         private readonly reservationRepository: ReservationRepository,
+        private readonly conversationRepository: ConversationRepository,
+        private readonly eventEmitter: EventEmitter2,
         @Inject(MESSAGE_SENDER) private readonly messageSender: MessageSender,
         @Inject(REDIS_CLIENT) private readonly redis: Redis,
         @InjectPinoLogger(MessageFlushProcessor.name) private readonly logger: PinoLogger,
@@ -82,6 +88,14 @@ export class MessageFlushProcessor extends WorkerHost {
         );
         try {
             const resort = await this.resortContextService.get(conversationKey, phoneNumberId);
+
+            // an employee has taken over this conversation from the desk — the bot must stay
+            // silent entirely (including the reservation confirm/decline shortcut below) so the
+            // guest never gets an automated reply while a human is actively answering them.
+            if (resort && (await this.conversationRepository.isHumanHandled(resort.id, guestNumber))) {
+                this.logger.debug(`Conversation ${conversationKey} is human-handled, skipping AI processing`);
+                return;
+            }
 
             // handle the special case where the guest is replying to a reservation confirmation prompt
             if (
@@ -116,6 +130,7 @@ export class MessageFlushProcessor extends WorkerHost {
             }
 
             await this.messageSender.sendText(phoneNumberId, guestNumber, reply);
+            this.recordAiReplyForDesk(resort, guestNumber, reply);
             await this.registerSessionMessage(conversationKey, phoneNumberId, guestNumber);
             this.logger.info(`User with ID ${guestNumber} sent a message: ${combined}. Its processed reply is: ${rawReply}`);
         } catch (err) {
@@ -154,6 +169,24 @@ export class MessageFlushProcessor extends WorkerHost {
         this.logger.info(`Guest ${guestNumber} responded with "${trimmed}" to reservation confirmation for ${pending.feature.name}. Updated status to ${pending.status}.`);
         await this.messageSender.sendText(phoneNumberId, guestNumber, confirmText);
         return true;
+    }
+
+    /**
+     * Notifies the desk of the AI's already-sent reply. This is an event, not a direct call —
+     * whoever's listening (DeskService) records it independently of this pipeline, so a listener
+     * failure can never bubble back into process()'s outer catch and cause a false "service
+     * unavailable" message for a reply that actually went out.
+     */
+    private recordAiReplyForDesk(resort: Resort | null, guestNumber: string, reply: string): void {
+        if (!resort) {
+            return;
+        }
+        const event: AiRepliedEvent = {
+            resortId: resort.id,
+            guestPhoneNumber: guestNumber,
+            body: reply,
+        };
+        this.eventEmitter.emit(DESK_EVENTS.AI_REPLIED, event);
     }
 
     private async isCoolingDown(conversationKey: string): Promise<boolean> {

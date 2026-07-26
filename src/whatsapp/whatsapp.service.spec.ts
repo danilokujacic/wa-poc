@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getLoggerToken } from 'nestjs-pino';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { WhatsappService } from './whatsapp.service';
 import { MessageBatchProducer } from 'src/bullmq/messages/messages.producer';
+import { ResortContextService } from 'src/resort/resort-context.service';
+import { DESK_EVENTS } from 'src/desk/desk.events';
 
 describe('WhatsappService', () => {
   let service: WhatsappService;
@@ -15,6 +18,8 @@ describe('WhatsappService', () => {
       providers: [
         WhatsappService,
         { provide: MessageBatchProducer, useValue: { addMessage: jest.fn() } },
+        { provide: ResortContextService, useValue: { get: jest.fn().mockResolvedValue(null) } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: getLoggerToken(WhatsappService.name), useValue: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } },
       ],
     }).compile();
@@ -41,46 +46,44 @@ describe('WhatsappService', () => {
     const challenge = 'test_challenge';
     expect(service.verifyTokenAndReturnChallenge('invalid_token', challenge)).toBeNull();
   });
-  it('should process incoming message correctly', async () => {
-    const mockProducer = {
-      addMessage: jest.fn(),
-    };
-    const mockLogger = {
-      info: jest.fn(),
-      error: jest.fn(),
-    };
 
-    const serviceWithMocks = new WhatsappService(mockProducer as any, mockLogger as any);
-
-    const body = {
-      entry: [
-        {
-          changes: [
-            {
-              value: {
-                messages: [
-                  {
-                    id: 'message_id',
-                    from: 'guest_number',
-                    type: 'text',
-                    text: { body: 'Hello' },
-                    timestamp: '1234567890',
-                  },
-                ],
-                contacts: [
-                  {
-                    profile: { name: 'Guest Name' },
-                  },
-                ],
-                metadata: { phone_number_id: 'phone_number_id' },
-              },
+  const buildBody = (overrides: { type?: string; text?: string } = {}) => ({
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              messages: [
+                {
+                  id: 'message_id',
+                  from: 'guest_number',
+                  type: overrides.type ?? 'text',
+                  ...(overrides.type === 'image' ? {} : { text: { body: overrides.text ?? 'Hello' } }),
+                  timestamp: '1234567890',
+                },
+              ],
+              contacts: [
+                {
+                  profile: { name: 'Guest Name' },
+                },
+              ],
+              metadata: { phone_number_id: 'phone_number_id' },
             },
-          ],
-        },
-      ],
-    };
+          },
+        ],
+      },
+    ],
+  });
 
-    await serviceWithMocks.processIncoming(body);
+  it('should process incoming message correctly', async () => {
+    const mockProducer = { addMessage: jest.fn() };
+    const mockResortContext = { get: jest.fn().mockResolvedValue(null) };
+    const mockEventEmitter = { emit: jest.fn() };
+    const mockLogger = { info: jest.fn(), error: jest.fn() };
+
+    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+
+    await serviceWithMocks.processIncoming(buildBody());
 
     expect(mockProducer.addMessage).toHaveBeenCalledWith(
       {
@@ -96,47 +99,50 @@ describe('WhatsappService', () => {
       },
     );
   });
+
+  it('emits a desk message-received event when the resort resolves', async () => {
+    const mockProducer = { addMessage: jest.fn() };
+    const resort = { id: 'resort-1' };
+    const mockResortContext = { get: jest.fn().mockResolvedValue(resort) };
+    const mockEventEmitter = { emit: jest.fn() };
+    const mockLogger = { info: jest.fn(), error: jest.fn() };
+
+    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+
+    await serviceWithMocks.processIncoming(buildBody({ text: 'Hi there' }));
+
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(DESK_EVENTS.MESSAGE_RECEIVED, {
+      resortId: 'resort-1',
+      guestPhoneNumber: 'guest_number',
+      body: 'Hi there',
+    });
+  });
+
+  it('does not let a desk-recording failure block the rest of processing', async () => {
+    const mockProducer = { addMessage: jest.fn() };
+    const mockResortContext = { get: jest.fn().mockRejectedValue(new Error('resort lookup failed')) };
+    const mockEventEmitter = { emit: jest.fn() };
+    const mockLogger = { info: jest.fn(), error: jest.fn() };
+
+    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+
+    await serviceWithMocks.processIncoming(buildBody());
+
+    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error recording inbound message for desk:'));
+    expect(mockProducer.addMessage).toHaveBeenCalled();
+  });
+
   it('should handle non-text messages by sending a default response', async () => {
-    const mockProducer = {
-      addMessage: jest.fn(),
-    };
-    const mockLogger = {
-      info: jest.fn(),
-      error: jest.fn(),
-    };
+    const mockProducer = { addMessage: jest.fn() };
+    const mockResortContext = { get: jest.fn().mockResolvedValue(null) };
+    const mockEventEmitter = { emit: jest.fn() };
+    const mockLogger = { info: jest.fn(), error: jest.fn() };
     const mockSendText = jest.fn();
 
-    const serviceWithMocks = new WhatsappService(mockProducer as any, mockLogger as any);
+    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
     serviceWithMocks.sendText = mockSendText;
 
-    const body = {
-      entry: [
-        {
-          changes: [
-            {
-              value: {
-                messages: [
-                  {
-                    id: 'message_id',
-                    from: 'guest_number',
-                    type: 'image', // Non-text message
-                    timestamp: '1234567890',
-                  },
-                ],
-                contacts: [
-                  {
-                    profile: { name: 'Guest Name' },
-                  },
-                ],
-                metadata: { phone_number_id: 'phone_number_id' },
-              },
-            },
-          ],
-        },
-      ],
-    };
-
-    await serviceWithMocks.processIncoming(body);
+    await serviceWithMocks.processIncoming(buildBody({ type: 'image' }));
 
     expect(mockSendText).toHaveBeenCalledWith(
       '1211777188687734',
@@ -144,48 +150,18 @@ describe('WhatsappService', () => {
       "Sorry, I can only read text messages for now. How can I help you?",
     );
   });
+
   it('should handle errors when adding message to queue', async () => {
-    const mockProducer = {
-      addMessage: jest.fn().mockRejectedValue(new Error('Queue error')),
-    };
-    const mockLogger = {
-      info: jest.fn(),
-      error: jest.fn(),
-    };
+    const mockProducer = { addMessage: jest.fn().mockRejectedValue(new Error('Queue error')) };
+    const mockResortContext = { get: jest.fn().mockResolvedValue(null) };
+    const mockEventEmitter = { emit: jest.fn() };
+    const mockLogger = { info: jest.fn(), error: jest.fn() };
     const mockSendText = jest.fn();
 
-    const serviceWithMocks = new WhatsappService(mockProducer as any, mockLogger as any);
+    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
     serviceWithMocks.sendText = mockSendText;
 
-    const body = {
-      entry: [
-        {
-          changes: [
-            {
-              value: {
-                messages: [
-                  {
-                    id: 'message_id',
-                    from: 'guest_number',
-                    type: 'text',
-                    text: { body: 'Hello' },
-                    timestamp: '1234567890',
-                  },
-                ],
-                contacts: [
-                  {
-                    profile: { name: 'Guest Name' },
-                  },
-                ],
-                metadata: { phone_number_id: 'phone_number_id' },
-              },
-            },
-          ],
-        },
-      ],
-    }
-      ;
-    await serviceWithMocks.processIncoming(body);
+    await serviceWithMocks.processIncoming(buildBody());
 
     expect(mockSendText).toHaveBeenCalledWith(
       '1211777188687734',

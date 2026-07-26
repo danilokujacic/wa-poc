@@ -6,6 +6,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { ResortModule } from './resort/resort.module';
@@ -15,6 +16,7 @@ import { ResortContactModule } from './resort-contact/resort-contact.module';
 import { ReservationModule } from './reservation/reservation.module';
 import { UsersModule } from './users/users.module';
 import { PhoneChangeModule } from './phone-change/phone-change.module';
+import { DeskModule } from './desk/desk.module';
 // import { BullmqModule } from './bullmq/bullmq.module';
 import { AuthModule } from './auth/auth.module';
 import appConfig from './config/app.config';
@@ -56,7 +58,7 @@ import appConfig from './config/app.config';
         },
       },
     }),
-  }), WhatsappModule, ResortModule, FaqModule, ResortFeatureModule, ResortContactModule, ReservationModule, UsersModule, PhoneChangeModule, ThrottlerModule.forRoot([
+  }), WhatsappModule, ResortModule, FaqModule, ResortFeatureModule, ResortContactModule, ReservationModule, UsersModule, PhoneChangeModule, DeskModule, ThrottlerModule.forRoot([
     {
       name: 'default',
       ttl: Number(process.env.WEBHOOK_RATE_LIMIT_WINDOW_MS ?? 60_000),
@@ -80,7 +82,7 @@ import appConfig from './config/app.config';
       entities: [join(__dirname, '**/entity/*.entity{.ts,.js}')],
       synchronize: process.env.NODE_ENV === 'development',        // DEV ONLY — auto-creates tables from entities
     }),
-  }), AuthModule, ScheduleModule.forRoot(),],
+  }), AuthModule, ScheduleModule.forRoot(), EventEmitterModule.forRoot(),],
   providers: [AppService],
 })
 export class AppModule { }

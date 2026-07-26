@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './exception/global-exception.filter';
+import { RedisIoAdapter } from './desk/redis-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true, bufferLogs: true });
@@ -15,6 +16,14 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.use(cookieParser());
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector), { excludeExtraneousValues: true }));
+  app.enableCors({
+    origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
+    credentials: true,
+  });
+
+  const redisIoAdapter = new RedisIoAdapter(app);
+  redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('WA POC API')
