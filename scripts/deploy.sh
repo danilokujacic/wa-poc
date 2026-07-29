@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
-# Runs on the EC2 host. Pulls latest main, builds the app image, runs
-# migrations as a one-off container, then (re)starts the stack.
+# Runs on the EC2 host, after the repo has already been updated by the caller.
+# Builds the app image, runs migrations as a one-off container, then (re)starts the stack.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
-
-echo "==> Fetching latest main"
-git fetch origin main
-git reset --hard origin/main
 
 echo "==> Starting infra services (postgres, redis, loki, grafana, maildev)"
 docker compose up -d postgres redis loki grafana maildev
