@@ -32,6 +32,14 @@ import appConfig from './config/app.config';
         level: 'debug',
         customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
         customErrorMessage: (req, res, err) => `${req.method} ${req.url} ${res.statusCode} - ${err.message}`,
+        // Structural safety net, not the primary control: message/guest content should never be
+        // passed to the logger in the first place (see the trace-id work across the messaging
+        // pipeline), but this redacts common content-shaped fields if a future log call slips one
+        // in anyway, before it ever reaches the Loki transport below.
+        redact: {
+          paths: ['req.body', 'req.headers.authorization', 'req.headers.cookie', 'body', 'text', 'combined', 'rawReply', 'reply'],
+          censor: '[REDACTED]',
+        },
         transport: {
           targets: [
             {

@@ -48,4 +48,8 @@ export class ConversationRepository extends Repository<Conversation> {
         });
         return conversation?.status === ConversationStatus.HUMAN;
     }
+
+    async updateLastMessageSentAt(id: string, sentAt: Date): Promise<void> {
+        await this.update(id, { lastMessageSentAt: sentAt });
+    }
 }

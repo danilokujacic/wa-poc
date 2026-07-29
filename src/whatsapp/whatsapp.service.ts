@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import { MessageBatchProducer } from 'src/bullmq/messages/messages.producer';
+import { RESORT_TIMEZONE } from 'src/bullmq/messages/messages.processor';
+import { WhatsappSendError } from 'src/bullmq/messages/message-sender.interface';
 import { ResortContextService } from 'src/resort/resort-context.service';
 import { DESK_EVENTS } from 'src/desk/desk.events';
 import type { MessageReceivedEvent } from 'src/desk/desk.events';
@@ -30,6 +32,8 @@ export class WhatsappService {
     }
 
     async processIncoming(body: any): Promise<void> {
+
+        this.logger.info(`Received webhook event with time ${this.toResortLocalTime(body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.timestamp)}`);
         const value = body?.entry?.[0]?.changes?.[0]?.value;
         if (!value) return;
 
@@ -39,9 +43,15 @@ export class WhatsappService {
         const phoneNumberId = value.metadata?.phone_number_id;
         const guestNumber = message.from; // guest's WhatsApp number
         const guestName = value.contacts?.[0]?.profile?.name ?? 'Guest';
+        // WhatsApp's own message id (wamid) — the correlation id for this message's whole
+        // journey through the desk-recording path. Globally unique and known before we've done
+        // anything with the message, so every downstream log can be tied back to it.
+        const traceId = message.id;
+        const conversationKey = `${phoneNumberId}:${guestNumber}`;
 
         // Only handle plain text for the POC. Extend with 'image', 'audio', etc. later.
         if (message.type !== 'text') {
+            this.logger.info({ traceId, conversationKey }, 'Received a non-text message; replying with the unsupported-type notice');
             await this.sendText(
                 '1211777188687734',
                 '38269280401',
@@ -50,15 +60,16 @@ export class WhatsappService {
             return;
         }
 
-        const guestText = message.text.body;
-        this.logger.info(`Message from ${guestName} (${guestNumber}): ${guestText}`);
+        // Intentionally not logging message.text.body here or anywhere downstream — guest/AI/
+        // employee message content must never reach the log pipeline (and therefore Grafana).
+        this.logger.info({ traceId, conversationKey }, 'Received guest message');
 
-        await this.recordInboundMessageForDesk(`${phoneNumberId}:${guestNumber}`, phoneNumberId, guestNumber, guestText);
+        await this.recordInboundMessageForDesk(conversationKey, phoneNumberId, guestNumber, message.text.body, message.timestamp, traceId);
 
         try {
             await this.producer.addMessage(
                 {
-                    conversationKey: `${phoneNumberId}:${guestNumber}`,
+                    conversationKey,
                     phoneNumberId,
                     guestNumber,
                     guestName,
@@ -75,7 +86,7 @@ export class WhatsappService {
                 '38269280401',
                 "Sorry, I cannot process your message right now. Please try again later.",
             );
-            this.logger.error(`Error adding message to queue: ${error}`);
+            this.logger.error({ traceId, conversationKey }, `Error adding message to queue: ${error}`);
         }
     }
 
@@ -90,6 +101,8 @@ export class WhatsappService {
         phoneNumberId: string,
         guestNumber: string,
         guestText: string,
+        waTimestamp: string,
+        traceId: string,
     ): Promise<void> {
         try {
             const resort = await this.resortContextService.get(conversationKey, phoneNumberId);
@@ -101,11 +114,34 @@ export class WhatsappService {
                 resortId: resort.id,
                 guestPhoneNumber: guestNumber,
                 body: guestText,
+                sentAt: new Date(Number(waTimestamp) * 1000).toISOString(),
+                traceId,
             };
             this.eventEmitter.emit(DESK_EVENTS.MESSAGE_RECEIVED, event);
         } catch (error) {
-            this.logger.error(`Error recording inbound message for desk: ${error}`);
+            this.logger.error({ traceId }, `Error recording inbound message for desk: ${error}`);
         }
+    }
+
+    /**
+     * WhatsApp sends `timestamp` as a string of Unix epoch seconds. Formats it as a
+     * resort-local date/time string for readability in logs.
+     */
+    private toResortLocalTime(epochSeconds: string | number | undefined): string {
+        if (epochSeconds === undefined) {
+            return 'unknown';
+        }
+
+        const date = new Date(Number(epochSeconds) * 1000);
+        return new Intl.DateTimeFormat('en-GB', {
+            timeZone: RESORT_TIMEZONE,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+        }).format(date);
     }
 
     async sendText(
@@ -133,6 +169,7 @@ export class WhatsappService {
         if (!res.ok) {
             const err = await res.text();
             this.logger.error(`Failed to send message: ${res.status} ${err}`);
+            throw new WhatsappSendError(res.status, `Failed to send WhatsApp message: ${res.status} ${err}`);
         }
     }
 

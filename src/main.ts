@@ -13,6 +13,9 @@ import { RedisIoAdapter } from './desk/redis-io.adapter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true, bufferLogs: true });
   app.useLogger(app.get(Logger));
+  // Lets BullMQ workers (e.g. DeskMessageProcessor) finish or cleanly release their
+  // current job on SIGTERM instead of being killed mid-write.
+  app.enableShutdownHooks();
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.use(cookieParser());
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector), { excludeExtraneousValues: true }));

@@ -21,6 +21,10 @@ export class ConversationResponseDto {
 
     @ApiProperty()
     @Expose()
+    lastMessageSentAt: Date;
+
+    @ApiProperty()
+    @Expose()
     createdAt: Date;
 
     @ApiProperty()
@@ -33,6 +37,7 @@ export class ConversationResponseDto {
         dto.guestPhoneNumber = conversation.guestPhoneNumber;
         dto.status = conversation.status;
         dto.assignedUserId = conversation.assignedUser?.id ?? null;
+        dto.lastMessageSentAt = conversation.lastMessageSentAt;
         dto.createdAt = conversation.createdAt;
         dto.updatedAt = conversation.updatedAt;
         return dto;

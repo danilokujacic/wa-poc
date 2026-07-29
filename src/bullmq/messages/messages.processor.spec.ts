@@ -13,13 +13,16 @@ import { ConversationRepository } from "src/repository/conversation.repository";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { DESK_EVENTS } from "src/desk/desk.events";
 
-function mockRedis(overrides: Partial<Record<'get' | 'incr' | 'expire' | 'set' | 'del', jest.Mock>> = {}) {
+function mockRedis(overrides: Partial<Record<'get' | 'incr' | 'expire' | 'set' | 'del' | 'lrange' | 'rpush' | 'ltrim', jest.Mock>> = {}) {
     return {
         get: jest.fn().mockResolvedValue(null),
         incr: jest.fn().mockResolvedValue(1),
         expire: jest.fn(),
         set: jest.fn(),
         del: jest.fn(),
+        lrange: jest.fn().mockResolvedValue([]),
+        rpush: jest.fn().mockResolvedValue(1),
+        ltrim: jest.fn().mockResolvedValue('OK'),
         ...overrides,
     };
 }
@@ -185,11 +188,16 @@ describe('MessageProcessor', () => {
 
         await processor.process(job);
 
-        expect(mockSendText).toHaveBeenCalledWith('123', '456', 'I am fine, thank you!');
+        // With a resort resolved, delivery happens durably via the desk pipeline instead of a
+        // direct send here — see WA_SEND_QUEUE.
+        expect(mockSendText).not.toHaveBeenCalled();
         expect(mockEmit).toHaveBeenCalledWith(DESK_EVENTS.AI_REPLIED, {
             resortId: 'resort-1',
             guestPhoneNumber: '456',
             body: 'I am fine, thank you!',
+            sentAt: expect.any(String),
+            phoneNumberId: '123',
+            traceId: expect.any(String),
         });
     });
     it('skips AI generation entirely once an employee has taken over the conversation', async () => {
@@ -286,7 +294,9 @@ describe('MessageProcessor', () => {
 
         expect(mockDrain).toHaveBeenCalledWith('123:456');
         expect(mockGenerateReply).toHaveBeenCalledWith('John Doe', expect.stringContaining('Q: Q?\nA: A.'));
-        expect(mockSendText).toHaveBeenCalledWith('123', '456', 'I am fine, thank you!');
+        // With a resort resolved, delivery happens durably via the desk pipeline instead of a
+        // direct send here — see WA_SEND_QUEUE.
+        expect(mockSendText).not.toHaveBeenCalled();
     });
     it('should build prompt correctly without resort FAQs', async () => {
         const mockDrain = jest.fn().mockResolvedValue([
@@ -496,6 +506,106 @@ describe('MessageProcessor', () => {
         expect(mockGenerateReply).toHaveBeenCalledWith('John Doe', expect.stringContaining('available 3/5'));
     });
 
+    it('replays prior conversation history into the prompt so the AI has memory across debounce cycles', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: '2 adults and 2 kids', timestamp: 1234567890 },
+        ]);
+        const mockGenerateReply = jest.fn().mockResolvedValue('Great, and what dates would you like?');
+        const redis = mockRedis({
+            lrange: jest.fn().mockResolvedValue([
+                JSON.stringify({ role: 'guest', text: 'I want to book the Private Cabana' }),
+                JSON.stringify({ role: 'assistant', text: 'Sure, what dates would you like?' }),
+                JSON.stringify({ role: 'guest', text: '5 - 18 august' }),
+                JSON.stringify({ role: 'assistant', text: 'How many adults and kids will be staying?' }),
+            ]),
+        });
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
+            { find: jest.fn().mockResolvedValue([]) } as any,
+            { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
+            { sendText: jest.fn() } as any,
+            redis as any,
+            mockLogger() as any,
+        );
+
+        await processor.process(job);
+
+        expect(redis.lrange).toHaveBeenCalledWith('wa:history:123:456', 0, -1);
+        expect(mockGenerateReply).toHaveBeenCalledWith(
+            'John Doe',
+            expect.stringContaining('Guest: I want to book the Private Cabana'),
+        );
+        expect(mockGenerateReply).toHaveBeenCalledWith(
+            'John Doe',
+            expect.stringContaining('Assistant: How many adults and kids will be staying?'),
+        );
+    });
+
+    it('appends the guest message and AI reply to conversation history after a successful turn', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'What are your working hours?', timestamp: 1234567890 },
+        ]);
+        const mockGenerateReply = jest.fn().mockResolvedValue('We are open 9am to 9pm.');
+        const redis = mockRedis();
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
+            { find: jest.fn().mockResolvedValue([]) } as any,
+            { findLatestPendingForGuest: jest.fn().mockResolvedValue(null), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
+            { sendText: jest.fn() } as any,
+            redis as any,
+            mockLogger() as any,
+        );
+
+        await processor.process(job);
+
+        expect(redis.rpush).toHaveBeenNthCalledWith(
+            1,
+            'wa:history:123:456',
+            JSON.stringify({ role: 'guest', text: 'What are your working hours?' }),
+        );
+        expect(redis.rpush).toHaveBeenNthCalledWith(
+            2,
+            'wa:history:123:456',
+            JSON.stringify({ role: 'assistant', text: 'We are open 9am to 9pm.' }),
+        );
+        expect(redis.ltrim).toHaveBeenCalledWith('wa:history:123:456', -20, -1);
+        expect(redis.expire).toHaveBeenCalledWith('wa:history:123:456', 24 * 3600);
+    });
+
+    it('does not append to history when the conversation is human-handled (no reply was actually produced)', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'Hello?', timestamp: 1234567890 },
+        ]);
+        const redis = mockRedis();
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: jest.fn() } as any,
+            { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
+            { find: jest.fn() } as any,
+            { findLatestPendingForGuest: jest.fn(), countActiveForFeature: jest.fn() } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(true) } as any,
+            { emit: jest.fn() } as any,
+            { sendText: jest.fn() } as any,
+            redis as any,
+            mockLogger() as any,
+        );
+
+        await processor.process(job);
+
+        expect(redis.rpush).not.toHaveBeenCalled();
+    });
+
     it('creates a pending reservation when the AI reply includes the reservation marker', async () => {
         const mockDrain = jest.fn().mockResolvedValue([
             { id: 'msg1', text: 'I want to book the Cabana', timestamp: 1234567890 },
@@ -507,7 +617,7 @@ describe('MessageProcessor', () => {
         const mockGenerateReply = jest
             .fn()
             .mockResolvedValue(
-                'Sure! Reply 1 to confirm or 2 to decline.\n\n[RESERVE feature="Cabana" start="2026-08-01" end="2026-08-03"]',
+                'Name: John Doe\nGuests: 3\nAdults: 2\nKids: 1\nPrice: 49.99\nDate: 2026-08-01 - 2026-08-03\n\nReply 1 to confirm or 2 to cancel.\n\n[RESERVE feature="Cabana" start="2026-08-01" end="2026-08-03" adults="2" kids="1"]',
             );
 
         const processor = new MessageFlushProcessor(
@@ -535,9 +645,13 @@ describe('MessageProcessor', () => {
             startDate: '2026-08-01',
             endDate: '2026-08-03',
             phoneNumber: '456',
+            adults: 2,
+            kids: 1,
         });
         expect(mockSave).toHaveBeenCalled();
-        expect(mockSendText).toHaveBeenCalledWith('123', '456', 'Sure! Reply 1 to confirm or 2 to decline.');
+        // With a resort resolved, delivery happens durably via the desk pipeline instead of a
+        // direct send here — see WA_SEND_QUEUE.
+        expect(mockSendText).not.toHaveBeenCalled();
     });
 
     it('does not create a reservation when the referenced feature has no availability left', async () => {
@@ -548,7 +662,7 @@ describe('MessageProcessor', () => {
         const mockSave = jest.fn();
         const mockGenerateReply = jest
             .fn()
-            .mockResolvedValue('[RESERVE feature="Cabana" start="2026-08-01" end="2026-08-03"]');
+            .mockResolvedValue('[RESERVE feature="Cabana" start="2026-08-01" end="2026-08-03" adults="2" kids="0"]');
 
         const processor = new MessageFlushProcessor(
             { drain: mockDrain } as any,
@@ -558,6 +672,79 @@ describe('MessageProcessor', () => {
             {
                 findLatestPendingForGuest: jest.fn().mockResolvedValue(null),
                 countActiveForFeature: jest.fn().mockResolvedValue(2),
+                create: jest.fn(),
+                save: mockSave,
+            } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: jest.fn() } as any,
+            { sendText: jest.fn() } as any,
+            mockRedis() as any,
+            mockLogger() as any,
+        );
+
+        await processor.process(job);
+
+        expect(mockSave).not.toHaveBeenCalled();
+    });
+
+    it('does not create a reservation and strips the marker even when the AI omits adults/kids', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'I want to book the Cabana', timestamp: 1234567890 },
+        ]);
+        const feature = { id: 'feature-1', name: 'Cabana', price: 49.99, quantity: 5 };
+        const mockSave = jest.fn();
+        const mockSendText = jest.fn();
+        // Malformed/incomplete marker (no adults/kids) — the AiRepliedEvent still must never
+        // leak the raw "[RESERVE ...]" text to the guest even though it can't be parsed.
+        const mockGenerateReply = jest
+            .fn()
+            .mockResolvedValue('Almost there!\n\n[RESERVE feature="Cabana" start="2026-08-01" end="2026-08-03"]');
+        const mockEmit = jest.fn();
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
+            { find: jest.fn().mockResolvedValue([feature]) } as any,
+            {
+                findLatestPendingForGuest: jest.fn().mockResolvedValue(null),
+                countActiveForFeature: jest.fn().mockResolvedValue(0),
+                create: jest.fn(),
+                save: mockSave,
+            } as any,
+            { isHumanHandled: jest.fn().mockResolvedValue(false) } as any,
+            { emit: mockEmit } as any,
+            { sendText: mockSendText } as any,
+            mockRedis() as any,
+            mockLogger() as any,
+        );
+
+        await processor.process(job);
+
+        expect(mockSave).not.toHaveBeenCalled();
+        const emittedEvent = mockEmit.mock.calls.find(([eventName]) => eventName === DESK_EVENTS.AI_REPLIED)?.[1];
+        expect(emittedEvent.body).not.toContain('[RESERVE');
+        expect(emittedEvent.body).toContain('Almost there!');
+    });
+
+    it('does not create a reservation when the AI reports zero adults', async () => {
+        const mockDrain = jest.fn().mockResolvedValue([
+            { id: 'msg1', text: 'I want to book the Cabana', timestamp: 1234567890 },
+        ]);
+        const feature = { id: 'feature-1', name: 'Cabana', price: 49.99, quantity: 5 };
+        const mockSave = jest.fn();
+        const mockGenerateReply = jest
+            .fn()
+            .mockResolvedValue('[RESERVE feature="Cabana" start="2026-08-01" end="2026-08-03" adults="0" kids="2"]');
+
+        const processor = new MessageFlushProcessor(
+            { drain: mockDrain } as any,
+            { generateReply: mockGenerateReply } as any,
+            { get: jest.fn().mockResolvedValue({ id: 'resort-1', name: 'Sunset Bay', faqs: [], contacts: [] }) } as any,
+            { find: jest.fn().mockResolvedValue([feature]) } as any,
+            {
+                findLatestPendingForGuest: jest.fn().mockResolvedValue(null),
+                countActiveForFeature: jest.fn().mockResolvedValue(0),
                 create: jest.fn(),
                 save: mockSave,
             } as any,
@@ -701,7 +888,7 @@ describe('MessageProcessor', () => {
                 { id: 'msg1', text: 'Hello', timestamp: 1234567890 },
             ]);
             const mockSendText = jest.fn();
-            const redis = mockRedis({ incr: jest.fn().mockResolvedValue(10) });
+            const redis = mockRedis({ incr: jest.fn().mockResolvedValue(15) });
 
             const processor = new MessageFlushProcessor(
                 { drain: mockDrain } as any,

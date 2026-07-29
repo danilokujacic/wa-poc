@@ -115,6 +115,8 @@ describe('WhatsappService', () => {
       resortId: 'resort-1',
       guestPhoneNumber: 'guest_number',
       body: 'Hi there',
+      sentAt: new Date(1234567890 * 1000).toISOString(),
+      traceId: 'message_id',
     });
   });
 
@@ -128,7 +130,10 @@ describe('WhatsappService', () => {
 
     await serviceWithMocks.processIncoming(buildBody());
 
-    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error recording inbound message for desk:'));
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: 'message_id' }),
+      expect.stringContaining('Error recording inbound message for desk:'),
+    );
     expect(mockProducer.addMessage).toHaveBeenCalled();
   });
 
@@ -168,6 +173,41 @@ describe('WhatsappService', () => {
       '38269280401',
       "Sorry, I cannot process your message right now. Please try again later.",
     );
-    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error adding message to queue:'));
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: 'message_id', conversationKey: 'phone_number_id:guest_number' }),
+      expect.stringContaining('Error adding message to queue:'),
+    );
+  });
+
+  describe('sendText', () => {
+    const mockProducer = { addMessage: jest.fn() };
+    const mockResortContext = { get: jest.fn() };
+    const mockEventEmitter = { emit: jest.fn() };
+    const mockLogger = { info: jest.fn(), error: jest.fn() };
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('throws when the WhatsApp API rejects the send (e.g. an expired/invalid token)', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve('{"error":{"message":"Authentication Error","code":190}}'),
+      } as Response);
+
+      const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+
+      await expect(serviceWithMocks.sendText('phone-id', 'guest-number', 'Hello')).rejects.toThrow('401');
+      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Failed to send message: 401'));
+    });
+
+    it('resolves without throwing when the WhatsApp API accepts the send', async () => {
+      jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as Response);
+
+      const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+
+      await expect(serviceWithMocks.sendText('phone-id', 'guest-number', 'Hello')).resolves.toBeUndefined();
+    });
   });
 });

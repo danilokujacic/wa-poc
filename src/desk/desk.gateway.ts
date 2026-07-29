@@ -56,6 +56,10 @@ export class DeskGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(this.resortRoom(resortId)).emit('newMessage', payload);
     }
 
+    emitMessageStatusUpdated(resortId: string, payload: unknown): void {
+        this.server.to(this.resortRoom(resortId)).emit('messageStatusUpdated', payload);
+    }
+
     private resortRoom(resortId: string): string {
         return `resort:${resortId}`;
     }

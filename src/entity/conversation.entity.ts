@@ -26,6 +26,11 @@ export class Conversation {
     @ManyToOne(() => User, { nullable: true })
     assignedUser: User | null;
 
+    /** sentAt of the most recently recorded message. Best-effort — updated fire-and-forget,
+     * so under out-of-order writes it isn't guaranteed to always reflect the true latest. */
+    @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
+    lastMessageSentAt: Date;
+
     @CreateDateColumn()
     createdAt: Date;
 

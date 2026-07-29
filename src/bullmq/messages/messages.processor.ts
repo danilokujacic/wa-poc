@@ -3,6 +3,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Job } from 'bullmq';
 import Redis from 'ioredis';
+import { randomUUID } from 'crypto';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import {
     MessageBatchProducer,
@@ -23,15 +24,22 @@ import { ReservationStatus } from 'src/entity/reservation.entity';
 import { DESK_EVENTS } from 'src/desk/desk.events';
 import type { AiRepliedEvent } from 'src/desk/desk.events';
 
-const RESERVATION_MARKER_REGEX = /\[RESERVE feature="([^"]+)" start="(\d{4}-\d{2}-\d{2})" end="(\d{4}-\d{2}-\d{2})"\]/;
+const RESERVATION_MARKER_REGEX =
+    /\[RESERVE feature="([^"]+)" start="(\d{4}-\d{2}-\d{2})" end="(\d{4}-\d{2}-\d{2})" adults="(\d+)" kids="(\d+)"\]/;
+
+// Loose match used only to strip the marker from the guest-visible reply — deliberately not
+// anchored to the exact field list/order above. If the model emits a malformed marker (e.g. a
+// non-numeric adults value) the strict regex above won't parse it, but this one still catches
+// and removes it, so a malformed marker never leaks to the guest as raw text.
+const RESERVATION_MARKER_STRIP_REGEX = /\[RESERVE[^\]]*\]/g;
 
 // Resorts seeded so far are in Montenegro; hardcoded until resorts carry their own timezone.
-const RESORT_TIMEZONE = 'Europe/Podgorica';
+export const RESORT_TIMEZONE = 'Europe/Podgorica';
 
 // Rate limit: after this many AI-answered turns in a session, cool the conversation down.
 // The reservation "1"/"2" confirmation shortcut doesn't count — it's not an AI call and
 // blocking a guest from confirming a booking they already started would be bad UX.
-const SESSION_MESSAGE_LIMIT = 5;
+const SESSION_MESSAGE_LIMIT = Number(process.env.SESSION_MESSAGE_LIMIT ?? 15);
 const COOLDOWN_SECONDS = 30 * 60;
 
 const OVERWHELMED_MESSAGE =
@@ -47,7 +55,22 @@ interface ReservationIntent {
     feature: string;
     start: string;
     end: string;
+    adults: number;
+    kids: number;
 }
+
+interface ConversationTurn {
+    role: 'guest' | 'assistant';
+    text: string;
+}
+
+// How many prior turns (guest + assistant combined) are kept and replayed into the prompt.
+// Bounded so the prompt doesn't grow unboundedly over a long conversation — a multi-step flow
+// like gathering a reservation's feature/dates/guest-counts comfortably fits well within this.
+const CONVERSATION_HISTORY_MAX_TURNS = 20;
+// Matches the session/cooldown lifetime this file already reasons in (see SESSION_MESSAGE_LIMIT/
+// COOLDOWN_SECONDS above) — history a guest abandoned for a day is stale context, not memory.
+const CONVERSATION_HISTORY_TTL_SECONDS = 24 * 3600;
 
 interface FeatureAvailability {
     feature: ResortFeature;
@@ -78,13 +101,20 @@ export class MessageFlushProcessor extends WorkerHost {
 
         const batch = await this.producer.drain(conversationKey);
         if (batch.length === 0) {
-            this.logger.debug(`No messages to flush for ${conversationKey}`);
+            this.logger.debug({ conversationKey }, 'No messages to flush');
             return;
         }
 
+        // Fresh correlation id for this debounce/flush cycle — a single AI turn can answer
+        // several batched guest messages, so it can't just reuse one of their wamids. The wamids
+        // that make up the batch are logged alongside it so the two can still be cross-referenced.
+        const traceId = randomUUID();
         const combined = batch.map((m) => m.text).join('\n');
+        // Intentionally never logging `combined`/`rawReply` (or any other message content) here
+        // or anywhere below — guest/AI message text must not reach the log pipeline / Grafana.
         this.logger.info(
-            `Flushing ${batch.length} msg(s) from ${guestName} (${conversationKey}): ${combined}`,
+            { traceId, conversationKey, messageCount: batch.length, sourceMessageIds: batch.map((m) => m.id) },
+            'Flushing debounced batch',
         );
         try {
             const resort = await this.resortContextService.get(conversationKey, phoneNumberId);
@@ -93,32 +123,37 @@ export class MessageFlushProcessor extends WorkerHost {
             // silent entirely (including the reservation confirm/decline shortcut below) so the
             // guest never gets an automated reply while a human is actively answering them.
             if (resort && (await this.conversationRepository.isHumanHandled(resort.id, guestNumber))) {
-                this.logger.debug(`Conversation ${conversationKey} is human-handled, skipping AI processing`);
+                this.logger.debug({ traceId, conversationKey }, 'Conversation is human-handled, skipping AI processing');
                 return;
             }
 
             // handle the special case where the guest is replying to a reservation confirmation prompt
             if (
                 resort &&
-                (await this.handleReservationConfirmationReply(resort, guestNumber, phoneNumberId, combined))
+                (await this.handleReservationConfirmationReply(resort, guestNumber, phoneNumberId, combined, traceId))
             ) {
                 return;
             }
 
             // cooldown for conversations that have hit the session message limit, to avoid overwhelming the AI service
             if (await this.isCoolingDown(conversationKey)) {
-                this.logger.debug(`Conversation ${conversationKey} is cooling down, ignoring message`);
+                this.logger.debug({ traceId, conversationKey }, 'Conversation is cooling down, ignoring message');
                 return;
             }
 
             const featureContext = resort ? await this.buildFeatureContext(resort.id) : [];
 
-            const prompt = this.buildPrompt(resort, combined, featureContext);
+            // Without this, every debounce cycle is a fresh, memoryless call to the AI — it would
+            // ask for a reservation's dates, get an answer, then forget it ever asked by the next
+            // message. This replays the recent turns so the model can pick up where it left off.
+            const history = await this.getConversationHistory(conversationKey);
+            const prompt = this.buildPrompt(resort, combined, featureContext, guestName, history);
 
             let rawReply: string;
             try {
                 rawReply = await this.aiService.generateReply(guestName, prompt);
             } catch (aiError) {
+                this.logger.warn({ traceId, conversationKey }, `AI service call failed, notifying guest: ${aiError}`);
                 await this.messageSender.sendText(phoneNumberId, guestNumber, OVERWHELMED_MESSAGE);
                 return;
             }
@@ -126,15 +161,31 @@ export class MessageFlushProcessor extends WorkerHost {
             const { reservationIntent, reply } = this.extractReservationIntent(rawReply);
 
             if (resort && reservationIntent) {
-                await this.tryCreateReservation(featureContext, guestNumber, reservationIntent);
+                await this.tryCreateReservation(featureContext, guestNumber, reservationIntent, traceId);
             }
 
-            await this.messageSender.sendText(phoneNumberId, guestNumber, reply);
-            this.recordAiReplyForDesk(resort, guestNumber, reply);
-            await this.registerSessionMessage(conversationKey, phoneNumberId, guestNumber);
-            this.logger.info(`User with ID ${guestNumber} sent a message: ${combined}. Its processed reply is: ${rawReply}`);
+            if (resort) {
+                // Recorded first (as "Pending"); the actual WhatsApp send happens durably via
+                // WA_SEND_QUEUE from within DeskService.recordMessage, so a bad/expired token
+                // or a transient WhatsApp outage gets retried instead of silently dropping the
+                // reply (and instead of failing this whole flush job).
+                this.recordAiReplyForDesk(resort, guestNumber, reply, phoneNumberId, traceId);
+            } else {
+                // No resort context to record this against on any desk — send directly so the
+                // guest still gets an answer; best-effort, no delivery-status tracking here.
+                await this.messageSender.sendText(phoneNumberId, guestNumber, reply);
+            }
+
+            // Only recorded once a reply was actually produced — the early returns above
+            // (human-handled, cooldown, reservation confirm/decline) intentionally don't reach
+            // here, so a silent bot doesn't pollute the transcript the next real turn replays.
+            await this.appendToHistory(conversationKey, { role: 'guest', text: combined });
+            await this.appendToHistory(conversationKey, { role: 'assistant', text: reply });
+
+            await this.registerSessionMessage(conversationKey, phoneNumberId, guestNumber, traceId);
+            this.logger.info({ traceId, conversationKey }, 'Flush job completed — AI reply generated and handed off');
         } catch (err) {
-            this.logger.error(`Error processing flush job for ${conversationKey}: ${err}`);
+            this.logger.error({ traceId, conversationKey }, `Error processing flush job: ${err}`);
             await this.messageSender.sendText(phoneNumberId, guestNumber, SERVICE_UNAVAILABLE);
             return;
         }
@@ -147,6 +198,7 @@ export class MessageFlushProcessor extends WorkerHost {
         guestNumber: string,
         phoneNumberId: string,
         guestMessage: string,
+        traceId: string,
     ): Promise<boolean> {
         const trimmed = guestMessage.trim();
         if (trimmed !== '1' && trimmed !== '2') {
@@ -166,18 +218,20 @@ export class MessageFlushProcessor extends WorkerHost {
                 ? `Your reservation for ${pending.feature.name} has been confirmed!`
                 : `Your reservation for ${pending.feature.name} has been declined.`;
 
-        this.logger.info(`Guest ${guestNumber} responded with "${trimmed}" to reservation confirmation for ${pending.feature.name}. Updated status to ${pending.status}.`);
+        this.logger.info(
+            { traceId, reservationId: pending.id, status: pending.status },
+            `Guest responded "${trimmed}" to reservation confirmation for "${pending.feature.name}"`,
+        );
         await this.messageSender.sendText(phoneNumberId, guestNumber, confirmText);
         return true;
     }
 
     /**
-     * Notifies the desk of the AI's already-sent reply. This is an event, not a direct call —
-     * whoever's listening (DeskService) records it independently of this pipeline, so a listener
-     * failure can never bubble back into process()'s outer catch and cause a false "service
-     * unavailable" message for a reply that actually went out.
+     * Hands the AI's reply off to the desk to record (and durably deliver over WhatsApp). This
+     * is an event, not a direct call — whoever's listening (DeskService) handles it independently
+     * of this pipeline, so a listener failure can never bubble back into process()'s outer catch.
      */
-    private recordAiReplyForDesk(resort: Resort | null, guestNumber: string, reply: string): void {
+    private recordAiReplyForDesk(resort: Resort | null, guestNumber: string, reply: string, phoneNumberId: string, traceId: string): void {
         if (!resort) {
             return;
         }
@@ -185,6 +239,9 @@ export class MessageFlushProcessor extends WorkerHost {
             resortId: resort.id,
             guestPhoneNumber: guestNumber,
             body: reply,
+            sentAt: new Date().toISOString(),
+            phoneNumberId,
+            traceId,
         };
         this.eventEmitter.emit(DESK_EVENTS.AI_REPLIED, event);
     }
@@ -198,6 +255,7 @@ export class MessageFlushProcessor extends WorkerHost {
         conversationKey: string,
         phoneNumberId: string,
         guestNumber: string,
+        traceId: string,
     ): Promise<void> {
         const countKey = this.sessionCountKey(conversationKey);
         const count = await this.redis.incr(countKey);
@@ -206,7 +264,7 @@ export class MessageFlushProcessor extends WorkerHost {
         if (count >= SESSION_MESSAGE_LIMIT) {
             await this.redis.set(this.cooldownKey(conversationKey), '1', 'EX', COOLDOWN_SECONDS);
             await this.redis.del(countKey);
-            this.logger.debug(`Conversation ${conversationKey} hit the session limit, cooling down`);
+            this.logger.debug({ traceId, conversationKey }, 'Conversation hit the session limit, cooling down');
             await this.messageSender.sendText(
                 phoneNumberId,
                 guestNumber,
@@ -221,6 +279,26 @@ export class MessageFlushProcessor extends WorkerHost {
 
     private cooldownKey(conversationKey: string): string {
         return `wa:cooldown:${conversationKey}`;
+    }
+
+    private historyKey(conversationKey: string): string {
+        return `wa:history:${conversationKey}`;
+    }
+
+    /** Prior turns for this conversation, oldest first — empty for a brand-new conversation or
+     * one that's gone quiet past CONVERSATION_HISTORY_TTL_SECONDS. */
+    private async getConversationHistory(conversationKey: string): Promise<ConversationTurn[]> {
+        const raw = await this.redis.lrange(this.historyKey(conversationKey), 0, -1);
+        return raw.map((entry) => JSON.parse(entry) as ConversationTurn);
+    }
+
+    private async appendToHistory(conversationKey: string, turn: ConversationTurn): Promise<void> {
+        const key = this.historyKey(conversationKey);
+        await this.redis.rpush(key, JSON.stringify(turn));
+        // Keep only the most recent N turns — bounds the prompt size over a long-running
+        // conversation instead of replaying its entire history forever.
+        await this.redis.ltrim(key, -CONVERSATION_HISTORY_MAX_TURNS, -1);
+        await this.redis.expire(key, CONVERSATION_HISTORY_TTL_SECONDS);
     }
 
     private async buildFeatureContext(resortId: string): Promise<FeatureAvailability[]> {
@@ -238,16 +316,29 @@ export class MessageFlushProcessor extends WorkerHost {
         featureContext: FeatureAvailability[],
         guestNumber: string,
         intent: ReservationIntent,
+        traceId: string,
     ): Promise<void> {
         const match = featureContext.find(
             (fc) => fc.feature.name.toLowerCase() === intent.feature.toLowerCase(),
         );
         if (!match) {
-            this.logger.debug(`AI referenced unknown feature "${intent.feature}"`);
+            this.logger.debug({ traceId }, `AI referenced unknown feature "${intent.feature}"`);
             return;
         }
         if (match.availability <= 0) {
-            this.logger.debug(`Feature "${match.feature.name}" has no availability, skipping reservation creation`);
+            this.logger.debug({ traceId }, `Feature "${match.feature.name}" has no availability, skipping reservation creation`);
+            return;
+        }
+
+        // Defense in depth: the prompt instructs the model to only ever emit the marker with
+        // valid guest counts, but an LLM's output isn't a schema-validated input — `adults`/`kids`
+        // are NOT NULL columns on Reservation, so a bad/missing value here must never reach
+        // `save()` as a DB constraint violation. Skip (and let the guest be asked again) instead.
+        if (!Number.isInteger(intent.adults) || intent.adults < 1 || !Number.isInteger(intent.kids) || intent.kids < 0) {
+            this.logger.debug(
+                { traceId, adults: intent.adults, kids: intent.kids },
+                'AI reservation intent had invalid guest counts, skipping reservation creation',
+            );
             return;
         }
 
@@ -256,22 +347,29 @@ export class MessageFlushProcessor extends WorkerHost {
             startDate: intent.start as unknown as Date,
             endDate: intent.end as unknown as Date,
             phoneNumber: guestNumber,
+            adults: intent.adults,
+            kids: intent.kids,
         });
         await this.reservationRepository.save(reservation);
+        this.logger.info({ traceId, reservationId: reservation.id, featureId: match.feature.id }, 'Reservation created from AI intent');
     }
 
     private extractReservationIntent(
         rawReply: string,
     ): { reservationIntent: ReservationIntent | null; reply: string } {
+        // Strip unconditionally, whether or not the strict parse below succeeds — this marker is
+        // for internal processing only and must never reach the guest, even a malformed one.
+        const reply = rawReply.replace(RESERVATION_MARKER_STRIP_REGEX, '').trim();
+
         const match = rawReply.match(RESERVATION_MARKER_REGEX);
         if (!match) {
-            return { reservationIntent: null, reply: rawReply.trim() };
+            return { reservationIntent: null, reply };
         }
 
-        const [marker, feature, start, end] = match;
+        const [, feature, start, end, adultsRaw, kidsRaw] = match;
         return {
-            reservationIntent: { feature, start, end },
-            reply: rawReply.replace(marker, '').trim(),
+            reservationIntent: { feature, start, end, adults: Number(adultsRaw), kids: Number(kidsRaw) },
+            reply,
         };
     }
 
@@ -279,6 +377,8 @@ export class MessageFlushProcessor extends WorkerHost {
         resort: Resort | null,
         guestMessage: string,
         featureContext: FeatureAvailability[],
+        guestName: string,
+        history: ConversationTurn[],
     ): string {
         const resortName = resort?.name ?? 'the resort';
 
@@ -307,13 +407,27 @@ export class MessageFlushProcessor extends WorkerHost {
 
         const sections = [
             `You are a helpful WhatsApp assistant for ${resortName}.`,
+            `Guest's name (use this for "Name" in a reservation confirmation summary, if one is needed): ${guestName}`,
+        ];
+
+        if (history.length > 0) {
+            const transcript = history
+                .map((turn) => `${turn.role === 'guest' ? 'Guest' : 'Assistant'}: ${turn.text}`)
+                .join('\n');
+            sections.push(
+                `Conversation so far (oldest first — the guest's latest message is given separately below, do not treat it as already answered):`,
+                transcript,
+            );
+        }
+
+        sections.push(
             `Resort details:`,
             detailsSection,
             `Contacts — share the relevant contact when the guest needs to reach the resort directly:`,
             contactSection,
             `Use the following FAQs to answer the guest when relevant:`,
             faqSection,
-        ];
+        );
 
         if (featureContext.length > 0) {
             const featureSection = featureContext
@@ -336,11 +450,23 @@ export class MessageFlushProcessor extends WorkerHost {
             }).format(today);
 
             sections.push(
-                `Bookable features and their current availability. Only mention prices when the guest explicitly asks about cost or pricing:`,
+                `Bookable features and their current availability. Only mention prices when the guest explicitly asks about cost or pricing (except during the reservation confirmation summary below, where price is always shown):`,
                 featureSection,
                 `Today's date is ${todayIso} (${todayWeekday}), resort local time.`,
-                `Reservation flow: if the guest explicitly asks to reserve/book one of the features above, ask them naturally what dates they'd like (e.g. "What dates would you like to book?") — never ask them to type a date in YYYY-MM-DD or any specific format. Guests will answer in natural language, such as "next Friday", "tomorrow", "August 1st to 3rd", "this weekend", or "for 2 nights starting Monday" — using today's date above, work out the actual calendar dates yourself. Once you have identified both the feature and a start and end date, end your reply with a line in exactly this format (using the feature name exactly as written above and dates as YYYY-MM-DD — this line is for internal processing only, the guest should never see it or be asked to produce it): [RESERVE feature="<feature name>" start="<start date>" end="<end date>"]. Before that line, ask the guest to reply "1" to confirm or "2" to decline. Only include this line once the feature has availability remaining and you've worked out both dates — ask a natural clarifying question instead if the dates are ambiguous or missing, or explain it's fully booked if there's no availability.`,
-                `Never guess or silently assume any date detail the guest didn't state — always ask instead. In particular: (1) if the guest gives only one date with no indication of how many nights or when they'd leave, do not assume a single-day stay — ask them when they'd like to check out or how many nights they're staying. (2) If the guest's own wording is internally contradictory or genuinely ambiguous about which dates they mean (for example "Friday next week until Monday next week", where a literal reading puts the Monday before the Friday), do not silently pick an interpretation — point out the contradiction in plain language and ask them to confirm the exact dates. (3) Any date you weren't given by the guest and haven't confirmed with them must never appear in the reservation marker — if you're unsure, ask rather than guess.`,
+                `Reservation flow — five things are required before a booking can be confirmed: (1) the feature, (2) a start date, (3) an end date, (4) the number of adults, (5) the number of kids. Gather whichever of these you don't already have, one at a time, in natural conversation — never ask the guest to fill out a form or type values in a specific format. For dates: ask naturally (e.g. "What dates would you like to book?"), never ask for YYYY-MM-DD — guests answer in natural language ("next Friday", "for 2 nights starting Monday", etc.) and you work out the actual calendar dates yourself using today's date above. For guest counts: ask naturally (e.g. "How many adults and kids will be staying?") — kids must be explicitly stated as zero by the guest ("just the two of us", "no kids") before you treat it as zero; never silently assume no kids just because the guest didn't mention them.`,
+                `Never guess or silently assume any date or guest-count detail the guest didn't state — always ask instead. In particular: (1) if the guest gives only one date with no indication of how many nights or when they'd leave, do not assume a single-day stay — ask when they'd like to check out or how many nights they're staying. (2) If the guest's own wording is internally contradictory or genuinely ambiguous about which dates they mean (for example "Friday next week until Monday next week", where a literal reading puts the Monday before the Friday), do not silently pick an interpretation — point out the contradiction and ask them to confirm. (3) If the guest gives a total number of guests without splitting adults vs. kids, ask them to split it out. (4) Nothing you weren't explicitly given and haven't confirmed with the guest may ever appear in the reservation marker below — if unsure of any of the five fields, ask rather than guess.`,
+                `Once — and only once — all five fields are known, valid (adults is at least 1; kids is zero or more), and the feature still has availability remaining, confirm the booking in two parts, in this exact order, both in the same reply: first a structured summary in exactly this layout (fill in the real values, keep the labels and line breaks exactly as shown, no extra commentary before or inside it):
+
+Name: <guest's name>
+Guests: <adults + kids>
+Adults: <adults>
+Kids: <kids>
+Price: <feature's price>
+Date: <start date> - <end date>
+
+Reply 1 to confirm or 2 to cancel.
+
+Then, on its own line immediately after, the internal marker (this line is for internal processing only — the guest should never be told about it or asked to produce it themselves): [RESERVE feature="<feature name>" start="<start date>" end="<end date>" adults="<adults>" kids="<kids>"]. Use the feature name exactly as written above, dates as YYYY-MM-DD, and adults/kids as plain integers. If the feature turns out to have no availability, tell the guest it's fully booked instead of producing a summary or marker.`,
             );
         }
 

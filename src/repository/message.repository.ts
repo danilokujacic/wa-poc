@@ -12,7 +12,14 @@ export class MessageRepository extends Repository<Message> {
         return this.find({
             where: { conversation: { id: conversationId } },
             relations: { conversation: true },
-            order: { createdAt: 'ASC' },
+            order: { sentAt: 'ASC' },
+        });
+    }
+
+    findOneForConversation(conversationId: string, messageId: string): Promise<Message | null> {
+        return this.findOne({
+            where: { id: messageId, conversation: { id: conversationId } },
+            relations: { conversation: true },
         });
     }
 }
