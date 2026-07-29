@@ -61,47 +61,30 @@ services:
     depends_on:
       - loki
 
-  # migrate:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   image: wa-poc-app:latest
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #   command: ["node", "./node_modules/typeorm/cli.js", "-d", "dist/data-source.js", "migration:run"]
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-
-  # app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   image: wa-poc-app:latest
-  #   restart: unless-stopped
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #     REDIS_HOST: redis
-  #     REDIS_PORT: 6379
-  #     LOKI_HOST: http://loki:3100
-  #     NODE_ENV: production
-  #   ports:
-  #     - "${PORT:-3000}:${PORT:-3000}"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     loki:
-  #       condition: service_started
-  #     migrate:
-  #       condition: service_completed_successfully
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wa-poc-app:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOKI_HOST: http://loki:3100
+      NODE_ENV: production
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      loki:
+        condition: service_started
 
 volumes:
   postgres_data:
