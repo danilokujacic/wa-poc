@@ -24,8 +24,7 @@
     "migration:run": "typeorm-ts-node-commonjs -d src/data-source.ts migration:run",
     "migration:revert": "typeorm-ts-node-commonjs -d src/data-source.ts migration:revert",
     "migration:run:prod": "node ./node_modules/typeorm/cli.js -d dist/data-source.js migration:run",
-    "seed": "ts-node --transpile-only src/seed.ts",
-    "prepare": "husky"
+    "seed": "ts-node --transpile-only src/seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.1",
@@ -81,7 +80,6 @@
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^17.0.0",
-    "husky": "^9.1.7",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
     "source-map-support": "^0.5.21",
