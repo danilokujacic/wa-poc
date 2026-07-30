@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, In, MoreThanOrEqual, Repository } from 'typeorm';
+import { DataSource, In, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ACTIVE_RESERVATION_STATUSES, Reservation, ReservationStatus } from '../entity/reservation.entity';
 
 @Injectable()
@@ -54,6 +54,18 @@ export class ReservationRepository extends Repository<Reservation> {
     async declinePendingForFeature(featureId: string): Promise<number> {
         const result = await this.update(
             { feature: { id: featureId }, status: ReservationStatus.PENDING },
+            { status: ReservationStatus.DECLINED },
+        );
+        return result.affected ?? 0;
+    }
+
+    // A Channex cancellation is authoritative regardless of the reservation's
+    // current status, so this bypasses ALLOWED_RESERVATION_STATUS_TRANSITIONS
+    // (e.g. an already-ACCEPTED booking can still be cancelled OTA-side).
+    // Finished stays are left alone — the guest already stayed.
+    async cancelByChannexBookingId(channexBookingId: string): Promise<number> {
+        const result = await this.update(
+            { channexBookingId, status: Not(ReservationStatus.FINISHED) },
             { status: ReservationStatus.DECLINED },
         );
         return result.affected ?? 0;

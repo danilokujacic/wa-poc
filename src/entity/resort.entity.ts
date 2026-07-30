@@ -33,6 +33,11 @@ export class Resort {
     @Column({ nullable: true })
     website: string;
 
+    // Channex property UUID this resort is mapped to. Set once content sync /
+    // channel setup has been done in the Channex dashboard for this resort.
+    @Column({ type: 'varchar', nullable: true, unique: true })
+    channexPropertyId: string | null;
+
     @OneToMany(() => Faq, (faq) => faq.resort)
     faqs: Faq[];
 

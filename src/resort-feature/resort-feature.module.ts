@@ -9,9 +9,10 @@ import { ResortFeatureService } from './resort-feature.service';
 import { ResortMemberGuard } from '../resort/guards/resort-member.guard';
 import { ResortOwnerGuard } from '../resort/guards/resort-owner.guard';
 import { AuthModule } from '../auth/auth.module';
+import { ChannexModule } from '../channex/channex.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([ResortFeature, Reservation]), AuthModule],
+    imports: [TypeOrmModule.forFeature([ResortFeature, Reservation]), AuthModule, ChannexModule],
     providers: [ResortFeatureRepository, ReservationRepository, ResortFeatureService, ResortMemberGuard, ResortOwnerGuard],
     exports: [ResortFeatureRepository],
     controllers: [ResortFeatureController],

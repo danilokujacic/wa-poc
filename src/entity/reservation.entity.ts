@@ -23,6 +23,11 @@ export const ALLOWED_RESERVATION_STATUS_TRANSITIONS: Record<ReservationStatus, R
     [ReservationStatus.FINISHED]: [],
 };
 
+export enum ReservationSource {
+    MANUAL = 'Manual',
+    CHANNEX = 'Channex',
+}
+
 @Entity()
 export class Reservation {
     @PrimaryGeneratedColumn('uuid')
@@ -51,6 +56,21 @@ export class Reservation {
 
     @Column({ type: 'jsonb', nullable: true })
     otherContact: unknown;
+
+    @Column({ type: 'enum', enum: ReservationSource, default: ReservationSource.MANUAL })
+    source: ReservationSource;
+
+    // Channex booking id (stable across revisions). Not DB-unique: a single OTA
+    // booking that spans multiple room types is ingested as one reservation row
+    // per room segment (see ChannexBookingSyncService), so several rows can share it.
+    @Column({ type: 'varchar', nullable: true })
+    channexBookingId: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    otaName: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    otaReservationCode: string | null;
 
     @CreateDateColumn()
     createdAt: Date;

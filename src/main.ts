@@ -32,6 +32,7 @@ async function bootstrap() {
     .setTitle('WA POC API')
     .setDescription('Resort and FAQ management API')
     .setVersion('1.0')
+    .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api', app, document);

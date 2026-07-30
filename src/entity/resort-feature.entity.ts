@@ -27,6 +27,10 @@ export class ResortFeature {
     @Column({ default: true })
     isActive: boolean;
 
+    // Channex room_type UUID this feature is mapped to.
+    @Column({ type: 'varchar', nullable: true, unique: true })
+    channexRoomTypeId: string | null;
+
     @ManyToOne(() => Resort, (resort) => resort.features)
     resort: Resort;
 }

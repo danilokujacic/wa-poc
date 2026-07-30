@@ -19,6 +19,7 @@ import { PhoneChangeModule } from './phone-change/phone-change.module';
 import { DeskModule } from './desk/desk.module';
 // import { BullmqModule } from './bullmq/bullmq.module';
 import { AuthModule } from './auth/auth.module';
+import { ChannexModule } from './channex/channex.module';
 import appConfig from './config/app.config';
 
 @Module({
@@ -52,7 +53,7 @@ import appConfig from './config/app.config';
               },
               level: 'debug',
             },
-            {
+            ...(process.env.NODE_ENV === 'production' ? [{
               target: 'pino-loki',
               options: {
                 host: configService.get<string>('LOKI_HOST', 'http://localhost:3100'),
@@ -61,12 +62,12 @@ import appConfig from './config/app.config';
                 interval: 5, // push every 5s
               },
               level: 'info',
-            },
+            }] : []),
           ],
         },
       },
     }),
-  }), WhatsappModule, ResortModule, FaqModule, ResortFeatureModule, ResortContactModule, ReservationModule, UsersModule, PhoneChangeModule, DeskModule, ThrottlerModule.forRoot([
+  }), WhatsappModule, ResortModule, FaqModule, ResortFeatureModule, ResortContactModule, ReservationModule, UsersModule, PhoneChangeModule, DeskModule, ChannexModule, ThrottlerModule.forRoot([
     {
       name: 'default',
       ttl: Number(process.env.WEBHOOK_RATE_LIMIT_WINDOW_MS ?? 60_000),
