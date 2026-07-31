@@ -10,7 +10,7 @@ import { Conversation, ConversationStatus } from '../entity/conversation.entity'
 import { Message, MessageDeliveryStatus, MessageSenderType } from '../entity/message.entity';
 import { DeskGateway } from './desk.gateway';
 import { DESK_EVENTS } from './desk.events';
-import type { AiRepliedEvent, MessageReceivedEvent } from './desk.events';
+import type { AiRepliedEvent, MessageReceivedEvent, ReservationStatusMessageEvent } from './desk.events';
 import { REDIS_CLIENT } from '../redis/redis.provider';
 import { DeskMessageProducer } from '../bullmq/desk-messages/desk-messages.producer';
 import { WaSendProducer } from '../bullmq/wa-send/wa-send.producer';
@@ -193,6 +193,31 @@ export class DeskService {
             body: event.body,
             sentAt: event.sentAt,
             phoneNumberId: event.phoneNumberId,
+            traceId: event.traceId,
+        });
+    }
+
+    // Unlike AiRepliedEvent, this event doesn't carry phoneNumberId — the reservation
+    // flow that emits it has no resort object in scope, only a resortId — so it's
+    // resolved here, same as replyAsEmployee does below.
+    @OnEvent(DESK_EVENTS.RESERVATION_STATUS_MESSAGE)
+    async handleReservationStatusMessage(event: ReservationStatusMessageEvent): Promise<void> {
+        const resort = await this.resortRepository.findOneBy({ id: event.resortId });
+        if (!resort) {
+            this.logger.warn(
+                { traceId: event.traceId, resortId: event.resortId },
+                'Reservation status message dropped: resort not found',
+            );
+            return;
+        }
+
+        await this.deskMessageProducer.enqueue({
+            resortId: event.resortId,
+            guestPhoneNumber: event.guestPhoneNumber,
+            sender: MessageSenderType.EMPLOYEE,
+            body: event.body,
+            sentAt: event.sentAt,
+            phoneNumberId: resort.phoneNumber,
             traceId: event.traceId,
         });
     }

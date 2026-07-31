@@ -4,7 +4,10 @@ import { WhatsappController } from './whatsapp.controller';
 import { WhatsappService } from './whatsapp.service';
 import { MESSAGE_SENDER } from 'src/bullmq/messages/message-sender.interface';
 import { BullModule } from '@nestjs/bullmq';
-import { MESSAGE_FLUSH_QUEUE, MessageBatchProducer } from 'src/bullmq/messages/messages.producer';
+import {
+  MESSAGE_FLUSH_QUEUE,
+  MessageBatchProducer,
+} from 'src/bullmq/messages/messages.producer';
 import { MessageFlushProcessor } from 'src/bullmq/messages/messages.processor';
 import { AiModule } from 'src/ai/ai.module';
 import { ResortModule } from 'src/resort/resort.module';
@@ -17,9 +20,17 @@ import { Conversation } from 'src/entity/conversation.entity';
 import { ConversationRepository } from 'src/repository/conversation.repository';
 
 @Module({
-  imports: [BullModule.registerQueue({
-    name: MESSAGE_FLUSH_QUEUE,
-  }), TypeOrmModule.forFeature([Conversation]), ResortModule, ResortFeatureModule, ReservationModule, AiModule, RedisModule],
+  imports: [
+    BullModule.registerQueue({
+      name: MESSAGE_FLUSH_QUEUE,
+    }),
+    TypeOrmModule.forFeature([Conversation]),
+    ResortModule,
+    ResortFeatureModule,
+    ReservationModule,
+    AiModule,
+    RedisModule,
+  ],
   controllers: [WhatsappController],
   providers: [
     WhatsappService,
@@ -32,4 +43,4 @@ import { ConversationRepository } from 'src/repository/conversation.repository';
   ],
   exports: [MESSAGE_SENDER],
 })
-export class WhatsappModule { }
+export class WhatsappModule {}

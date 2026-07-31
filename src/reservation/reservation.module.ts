@@ -9,11 +9,22 @@ import { ReservationService } from './reservation.service';
 import { ReservationStatusScheduler } from './reservation-status.scheduler';
 import { ResortMemberGuard } from '../resort/guards/resort-member.guard';
 import { AuthModule } from '../auth/auth.module';
+import { ChannexAriModule } from '../channex/channex-ari.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([Reservation, ResortFeature]), AuthModule],
-    providers: [ReservationRepository, ResortFeatureRepository, ReservationService, ResortMemberGuard, ReservationStatusScheduler],
-    exports: [ReservationRepository, ReservationService],
-    controllers: [ReservationController],
+  imports: [
+    TypeOrmModule.forFeature([Reservation, ResortFeature]),
+    AuthModule,
+    ChannexAriModule,
+  ],
+  providers: [
+    ReservationRepository,
+    ResortFeatureRepository,
+    ReservationService,
+    ResortMemberGuard,
+    ReservationStatusScheduler,
+  ],
+  exports: [ReservationRepository, ReservationService],
+  controllers: [ReservationController],
 })
-export class ReservationModule { }
+export class ReservationModule {}

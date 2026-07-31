@@ -6,47 +6,51 @@ import { ResortContact } from './resort-contact.entity';
 
 @Entity()
 export class Resort {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-    @Column()
-    name: string;
+  @Column()
+  name: string;
 
-    @Column({ unique: true })
-    phoneNumber: string;
+  @Column({ unique: true })
+  phoneNumber: string;
 
-    @Column({ nullable: true })
-    address: string;
+  @Column({ nullable: true })
+  address: string;
 
-    @Column({ type: 'float', nullable: true })
-    latitude: number;
+  @Column({ type: 'float', nullable: true })
+  latitude: number;
 
-    @Column({ type: 'float', nullable: true })
-    longitude: number;
+  @Column({ type: 'float', nullable: true })
+  longitude: number;
 
-    @Column({ nullable: true })
-    startWorkingHours: string;
+  @Column({ nullable: true })
+  startWorkingHours: string;
 
-    @Column({ nullable: true })
-    endWorkingHours: string;
+  @Column({ nullable: true })
+  endWorkingHours: string;
 
-    @Column({ nullable: true })
-    website: string;
+  @Column({ nullable: true })
+  website: string;
 
-    // Channex property UUID this resort is mapped to. Set once content sync /
-    // channel setup has been done in the Channex dashboard for this resort.
-    @Column({ type: 'varchar', nullable: true, unique: true })
-    channexPropertyId: string | null;
+  // Channex property UUID this resort is mapped to. Set once content sync /
+  // channel setup has been done in the Channex dashboard for this resort.
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  channexPropertyId: string | null;
 
-    @OneToMany(() => Faq, (faq) => faq.resort)
-    faqs: Faq[];
+  // ISO 4217 currency for this resort's Channex property and rate plans.
+  @Column({ default: 'EUR' })
+  currency: string;
 
-    @OneToMany(() => User, (user) => user.resort)
-    users: User[];
+  @OneToMany(() => Faq, (faq) => faq.resort)
+  faqs: Faq[];
 
-    @OneToMany(() => ResortFeature, (feature) => feature.resort)
-    features: ResortFeature[];
+  @OneToMany(() => User, (user) => user.resort)
+  users: User[];
 
-    @OneToMany(() => ResortContact, (contact) => contact.resort)
-    contacts: ResortContact[];
+  @OneToMany(() => ResortFeature, (feature) => feature.resort)
+  features: ResortFeature[];
+
+  @OneToMany(() => ResortContact, (contact) => contact.resort)
+  contacts: ResortContact[];
 }

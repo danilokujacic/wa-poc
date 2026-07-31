@@ -7,6 +7,7 @@ import {
   ReservationStatus,
 } from '../entity/reservation.entity';
 import { ChannexApiClient } from './channex-api.client';
+import { ChannexAriProducer } from '../bullmq/channex-ari/channex-ari.producer';
 import {
   ChannexBookingRevision,
   ChannexBookingRevisionAttributes,
@@ -22,6 +23,7 @@ export class ChannexBookingSyncService {
     private readonly resortRepository: ResortRepository,
     private readonly resortFeatureRepository: ResortFeatureRepository,
     private readonly reservationRepository: ReservationRepository,
+    private readonly channexAriProducer: ChannexAriProducer,
   ) {}
 
   async applyAndAckRevision(revisionId: string): Promise<void> {
@@ -46,12 +48,15 @@ export class ChannexBookingSyncService {
     }
 
     if (attrs.status === 'cancelled') {
-      const cancelledCount =
+      const affectedFeatureIds =
         await this.reservationRepository.cancelByChannexBookingId(
           attrs.booking_id,
         );
+      for (const featureId of affectedFeatureIds) {
+        void this.channexAriProducer.enqueueAvailabilityPush(featureId);
+      }
       this.logger.log(
-        `Cancelled ${cancelledCount} reservation(s) for Channex booking ${attrs.booking_id}`,
+        `Cancelled reservation(s) for Channex booking ${attrs.booking_id} across ${affectedFeatureIds.length} feature(s)`,
       );
       return;
     }
@@ -154,6 +159,25 @@ export class ChannexBookingSyncService {
     });
 
     await this.reservationRepository.save(reservation);
+    void this.channexAriProducer.enqueueAvailabilityPush(feature.id);
+
+    // Never drop an OTA booking over a capacity mismatch — the guest already
+    // has a real confirmation on the channel side whether or not the room
+    // math likes it. Just make sure someone finds out fast: log loud (an
+    // error, not a warning) rather than persist a flag that could drift from
+    // reality — see Reservation.isOverbooked for how this gets surfaced on read.
+    const overlapping = await this.reservationRepository.findActiveOverlapping(
+      feature.id,
+      startDate,
+      endDate,
+    );
+    if (overlapping.length > feature.quantity) {
+      this.logger.error(
+        `OVERBOOKED: Channex booking ${attrs.booking_id} (${attrs.ota_name ?? 'unknown OTA'}) for feature "${feature.name}" (${feature.id}) — ` +
+          `${overlapping.length}/${feature.quantity} reservations now occupy ${checkin} to ${checkout}`,
+      );
+    }
+
     this.logger.log(
       `Created reservation ${reservation.id} from Channex booking ${attrs.booking_id} (${attrs.ota_name ?? 'unknown OTA'})`,
     );
