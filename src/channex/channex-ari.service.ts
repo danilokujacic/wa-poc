@@ -97,12 +97,14 @@ export class ChannexAriService {
     // prefix sum gives occupied-count per day.
     const delta = new Array<number>(AVAILABILITY_WINDOW_DAYS + 1).fill(0);
     for (const reservation of reservations) {
+      // TypeORM's `date` columns come back from pg as plain 'YYYY-MM-DD'
+      // strings at runtime despite the `Date`-typed entity field, so these
+      // need an explicit parse before any Date arithmetic below.
+      const reservationStart = new Date(reservation.startDate);
+      const reservationEnd = new Date(reservation.endDate);
       const occStart =
-        reservation.startDate < windowStart
-          ? windowStart
-          : reservation.startDate;
-      const occEnd =
-        reservation.endDate > windowEnd ? windowEnd : reservation.endDate;
+        reservationStart < windowStart ? windowStart : reservationStart;
+      const occEnd = reservationEnd > windowEnd ? windowEnd : reservationEnd;
       delta[diffDays(windowStart, occStart)] += 1;
       delta[diffDays(windowStart, occEnd)] -= 1;
     }

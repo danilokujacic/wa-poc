@@ -13,14 +13,27 @@ function contextWith(headers: Record<string, string>, rawBody?: Buffer) {
 describe('WebhookSignatureGuard', () => {
     let guard: WebhookSignatureGuard;
     const originalSecret = process.env.WHATSAPP_APP_SECRET;
+    const originalNodeEnv = process.env.NODE_ENV;
 
     beforeEach(() => {
         guard = new WebhookSignatureGuard();
         process.env.WHATSAPP_APP_SECRET = 'test-app-secret';
+        // The guard skips verification entirely outside production (to allow
+        // Postman-style manual testing in dev) — force production here so
+        // these tests actually exercise the signature-checking logic.
+        process.env.NODE_ENV = 'production';
     });
 
     afterAll(() => {
         process.env.WHATSAPP_APP_SECRET = originalSecret;
+        process.env.NODE_ENV = originalNodeEnv;
+    });
+
+    it('skips verification outside production', () => {
+        process.env.NODE_ENV = 'development';
+        const rawBody = Buffer.from(JSON.stringify({ hello: 'world' }));
+
+        expect(guard.canActivate(contextWith({}, rawBody))).toBe(true);
     });
 
     it('accepts a request signed with the correct app secret', () => {

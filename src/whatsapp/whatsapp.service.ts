@@ -177,7 +177,7 @@ export class WhatsappService {
         phoneNumberId: string,
         messageId: string,
     ): Promise<void> {
-        await fetch(`${GRAPH_API} / ${phoneNumberId}/messages`, {
+        await fetch(`${GRAPH_API}/${phoneNumberId}/messages`, {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,

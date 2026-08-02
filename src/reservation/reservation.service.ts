@@ -76,7 +76,7 @@ export class ReservationService {
       status = 'ALL',
       phoneNumber = '',
       overbooked,
-    }: FindReservationsQueryDto,
+    }: FindReservationsQueryDto = {},
   ): Promise<Reservation[]> {
     const fromISO = this.parseDate(from);
     const toISO = to ? this.parseDate(to) : undefined;

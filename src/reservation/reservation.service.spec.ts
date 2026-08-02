@@ -165,8 +165,15 @@ describe('ReservationService', () => {
 
     const result = await service.findAll('resort-1');
 
+    // `from` defaults to today (see list-filter-pattern convention), so the
+    // query always carries a startDate >= today MoreThanOrEqual operator.
     expect(reservationRepository.find).toHaveBeenCalledWith({
-      where: { feature: { resort: { id: 'resort-1' } } },
+      where: {
+        feature: { resort: { id: 'resort-1' } },
+        startDate: expect.objectContaining({
+          _type: 'moreThanOrEqual',
+        }),
+      },
       relations: { feature: true },
     });
     expect(result).toEqual([

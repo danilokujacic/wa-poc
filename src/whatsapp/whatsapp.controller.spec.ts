@@ -1,8 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getLoggerToken } from 'nestjs-pino';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappService } from './whatsapp.service';
 import { MessageBatchProducer } from 'src/bullmq/messages/messages.producer';
+import { ResortContextService } from '../resort/resort-context.service';
 import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
 import { GlobalWebhookThrottlerGuard } from './guards/global-webhook-throttler.guard';
 
@@ -19,6 +21,8 @@ describe('WhatsappController', () => {
       providers: [
         WhatsappService,
         { provide: MessageBatchProducer, useValue: { addMessage: jest.fn() } },
+        { provide: ResortContextService, useValue: { prewarm: jest.fn() } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: getLoggerToken(WhatsappService.name), useValue: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } },
       ],
     })

@@ -642,7 +642,7 @@ describe('MessageProcessor', () => {
     await processor.process(job);
 
     expect(mockFind).toHaveBeenCalledWith({
-      where: { resort: { id: 'resort-1' } },
+      where: { resort: { id: 'resort-1' }, isActive: true },
     });
     expect(mockCountActive).toHaveBeenCalledWith('feature-1');
     expect(mockGenerateReply).toHaveBeenCalledWith(

@@ -1,29 +1,42 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+import { createTestApp } from './utils/test-app';
 
-describe('AppController (e2e)', () => {
+// Basic boot smoke test: the app wires up its full module graph (real DB,
+// real Redis/BullMQ) and the HTTP layer responds.
+//
+// This used to assert `GET /` returns "Hello World!" — that route was never
+// actually implemented (there is no AppController in src/, only an unused
+// AppService.getHello()), so the original test had been asserting a
+// nonexistent feature since the project's initial commit. Repointed at a
+// route that's real instead.
+describe('App (e2e)', () => {
   let app: INestApplication<App>;
+  let close: () => Promise<void>;
 
-  beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    await app.init();
+  beforeAll(async () => {
+    ({ app, close } = await createTestApp());
   });
 
-  it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
+  afterAll(async () => {
+    await close();
+  });
+
+  it('boots the full module graph and serves a real route', async () => {
+    process.env.WHATSAPP_VERIFY_TOKEN = 'test_verify_token';
+
+    await request(app.getHttpServer())
+      .get('/whatsapp')
+      .query({
+        'hub.challenge': 'smoke-test-challenge',
+        'hub.verify_token': 'test_verify_token',
+      })
       .expect(200)
-      .expect('Hello World!');
+      .expect('smoke-test-challenge');
   });
 
-  afterEach(async () => {
-    await app.close();
+  it('404s an unmapped route', async () => {
+    await request(app.getHttpServer()).get('/this-route-does-not-exist').expect(404);
   });
 });

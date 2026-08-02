@@ -6,7 +6,42 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.14.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Isolated unit tests (mocked providers, no real infra). Coverage
+      # threshold (80% statements/branches/functions/lines) is enforced by
+      # the jest config in package.json — this step fails the build if it
+      # regresses below that.
+      - name: Unit tests
+        run: pnpm test:cov
+
+      # Real Postgres + Redis via testcontainers (ubuntu-latest runners have
+      # a Docker daemon available by default, no service-container setup
+      # needed) and mocked outbound HTTP (Meta Graph API / Channex) so no
+      # real external calls happen in CI.
+      - name: E2E tests
+        run: pnpm test:e2e
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH

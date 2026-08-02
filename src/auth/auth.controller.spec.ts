@@ -52,7 +52,7 @@ describe('AuthController', () => {
             expect.objectContaining({ httpOnly: true, sameSite: 'lax' }),
         );
         expect(result).toEqual({
-            user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', role: 'Owner', emailConfirmed: false, resortId: null },
+            user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', role: 'Owner', emailConfirmed: false, resort: null },
         });
     });
 
@@ -70,7 +70,7 @@ describe('AuthController', () => {
             expect.objectContaining({ httpOnly: true, sameSite: 'lax' }),
         );
         expect(result).toEqual({
-            user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', role: 'Owner', emailConfirmed: true, resortId: null },
+            user: { id: 'user-1', name: 'Jane Doe', email: 'jane@example.com', role: 'Owner', emailConfirmed: true, resort: null },
         });
     });
 

@@ -15,7 +15,7 @@ export interface ChannexAriJobData {
 // Coalesces a burst of writes to one feature (e.g. several reservations
 // created in quick succession) into a single push a few seconds later,
 // instead of one HTTP call per write.
-const DEBOUNCE_MS = 10_000;
+export const DEBOUNCE_MS = 10_000;
 
 @Injectable()
 export class ChannexAriProducer {
@@ -43,10 +43,17 @@ export class ChannexAriProducer {
     const data: ChannexAriJobData = { featureId, kind };
 
     try {
+      // A prior push under this jobId may already be sitting in a terminal
+      // state (completed, or failed after exhausting its retries) rather
+      // than delayed/waiting. BullMQ silently no-ops `add()` for a jobId
+      // that already exists in *any* state, so leaving a terminal job in
+      // place here would permanently block every future debounced push for
+      // this feature+kind. Only 'active' (currently executing) is left
+      // alone, since removing an in-flight job isn't safe.
       const existing = await this.queue.getJob(jobId);
       if (existing) {
         const state = await existing.getState();
-        if (state === 'delayed' || state === 'waiting') {
+        if (state !== 'active') {
           await existing.remove();
         }
       }
