@@ -56,3 +56,7 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 .early.coverage
+
+# Internal notes / handoff docs (progress logs, frontend integration specs, etc.)
+# — never pushed publicly.
+/docs
