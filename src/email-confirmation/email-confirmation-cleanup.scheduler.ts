@@ -4,13 +4,15 @@ import { EmailConfirmationRepository } from '../repository/email-confirmation.re
 
 @Injectable()
 export class EmailConfirmationCleanupScheduler {
-    private readonly logger = new Logger(EmailConfirmationCleanupScheduler.name);
+  private readonly logger = new Logger(EmailConfirmationCleanupScheduler.name);
 
-    constructor(private readonly emailConfirmationRepository: EmailConfirmationRepository) { }
+  constructor(
+    private readonly emailConfirmationRepository: EmailConfirmationRepository,
+  ) {}
 
-    @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
-    async deleteExpiredConfirmations(): Promise<void> {
-        const deletedCount = await this.emailConfirmationRepository.deleteExpired();
-        this.logger.log(`Deleted ${deletedCount} expired email confirmation(s)`);
-    }
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async deleteExpiredConfirmations(): Promise<void> {
+    const deletedCount = await this.emailConfirmationRepository.deleteExpired();
+    this.logger.log(`Deleted ${deletedCount} expired email confirmation(s)`);
+  }
 }

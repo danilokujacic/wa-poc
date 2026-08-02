@@ -8,9 +8,9 @@ import { ResortMemberGuard } from '../resort/guards/resort-member.guard';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([Faq]), AuthModule],
-    providers: [FaqRepository, FaqService, ResortMemberGuard],
-    exports: [FaqRepository],
-    controllers: [FaqController],
+  imports: [TypeOrmModule.forFeature([Faq]), AuthModule],
+  providers: [FaqRepository, FaqService, ResortMemberGuard],
+  exports: [FaqRepository],
+  controllers: [FaqController],
 })
-export class FaqModule { }
+export class FaqModule {}

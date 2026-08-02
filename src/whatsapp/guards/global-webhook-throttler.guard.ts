@@ -10,7 +10,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
  */
 @Injectable()
 export class GlobalWebhookThrottlerGuard extends ThrottlerGuard {
-    protected async getTracker(): Promise<string> {
-        return 'whatsapp-webhook';
-    }
+  protected async getTracker(): Promise<string> {
+    return 'whatsapp-webhook';
+  }
 }

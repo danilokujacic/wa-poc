@@ -13,16 +13,16 @@ import { AuthModule } from '../auth/auth.module';
 import { RedisModule } from '../redis/redis.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([Resort, User]), AuthModule, RedisModule],
-    providers: [
-        ResortRepository,
-        ResortService,
-        UserRepository,
-        ResortOwnerGuard,
-        ResortMemberGuard,
-        ResortContextService,
-    ],
-    exports: [ResortRepository, ResortContextService],
-    controllers: [ResortController],
+  imports: [TypeOrmModule.forFeature([Resort, User]), AuthModule, RedisModule],
+  providers: [
+    ResortRepository,
+    ResortService,
+    UserRepository,
+    ResortOwnerGuard,
+    ResortMemberGuard,
+    ResortContextService,
+  ],
+  exports: [ResortRepository, ResortContextService],
+  controllers: [ResortController],
 })
-export class ResortModule { }
+export class ResortModule {}

@@ -9,16 +9,16 @@ import { validateSync } from 'class-validator';
  * (letting the DTO's/consumer's own defaults take over).
  */
 export class LenientValidationPipe<T extends object> implements PipeTransform {
-    constructor(private readonly dtoClass: Type<T>) { }
+  constructor(private readonly dtoClass: Type<T>) {}
 
-    transform(value: unknown, _metadata: ArgumentMetadata): T {
-        const instance = plainToInstance(this.dtoClass, value ?? {});
-        const errors = validateSync(instance as object);
+  transform(value: unknown, _metadata: ArgumentMetadata): T {
+    const instance = plainToInstance(this.dtoClass, value ?? {});
+    const errors = validateSync(instance as object);
 
-        for (const error of errors) {
-            delete (instance as Record<string, unknown>)[error.property];
-        }
-
-        return instance;
+    for (const error of errors) {
+      delete (instance as Record<string, unknown>)[error.property];
     }
+
+    return instance;
+  }
 }

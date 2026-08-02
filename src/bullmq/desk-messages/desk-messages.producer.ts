@@ -13,24 +13,27 @@ const RETRY_ATTEMPTS = 36;
 
 @Injectable()
 export class DeskMessageProducer {
-    constructor(
-        @InjectQueue(DESK_MESSAGE_QUEUE) private readonly queue: Queue,
-        @InjectPinoLogger(DeskMessageProducer.name) private readonly logger: PinoLogger,
-    ) { }
+  constructor(
+    @InjectQueue(DESK_MESSAGE_QUEUE) private readonly queue: Queue,
+    @InjectPinoLogger(DeskMessageProducer.name)
+    private readonly logger: PinoLogger,
+  ) {}
 
-    async enqueue(data: RecordMessageParams): Promise<void> {
-        try {
-            await this.queue.add('record', data, {
-                attempts: RETRY_ATTEMPTS,
-                backoff: { type: 'fixed', delay: RETRY_DELAY_MS },
-                removeOnComplete: true,
-                // Keep permanently-failed jobs around for a day so they're visible for
-                // manual inspection/replay instead of silently vanishing.
-                removeOnFail: { age: 24 * 3600 },
-            });
-        } catch (err) {
-            this.logger.error(`Error enqueuing desk message for conversation ${data.resortId}:${data.guestPhoneNumber}: ${err}`);
-            throw err;
-        }
+  async enqueue(data: RecordMessageParams): Promise<void> {
+    try {
+      await this.queue.add('record', data, {
+        attempts: RETRY_ATTEMPTS,
+        backoff: { type: 'fixed', delay: RETRY_DELAY_MS },
+        removeOnComplete: true,
+        // Keep permanently-failed jobs around for a day so they're visible for
+        // manual inspection/replay instead of silently vanishing.
+        removeOnFail: { age: 24 * 3600 },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Error enqueuing desk message for conversation ${data.resortId}:${data.guestPhoneNumber}: ${err}`,
+      );
+      throw err;
     }
+  }
 }

@@ -5,71 +5,90 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResortMemberGuard } from '../resort/guards/resort-member.guard';
 
 describe('FaqController', () => {
-    let controller: FaqController;
-    let service: { create: jest.Mock; findAll: jest.Mock; findOne: jest.Mock; update: jest.Mock; remove: jest.Mock };
+  let controller: FaqController;
+  let service: {
+    create: jest.Mock;
+    findAll: jest.Mock;
+    findOne: jest.Mock;
+    update: jest.Mock;
+    remove: jest.Mock;
+  };
 
-    beforeEach(async () => {
-        service = {
-            create: jest.fn(),
-            findAll: jest.fn(),
-            findOne: jest.fn(),
-            update: jest.fn(),
-            remove: jest.fn(),
-        };
+  beforeEach(async () => {
+    service = {
+      create: jest.fn(),
+      findAll: jest.fn(),
+      findOne: jest.fn(),
+      update: jest.fn(),
+      remove: jest.fn(),
+    };
 
-        const module: TestingModule = await Test.createTestingModule({
-            controllers: [FaqController],
-            providers: [{ provide: FaqService, useValue: service }],
-        })
-            .overrideGuard(JwtAuthGuard)
-            .useValue({ canActivate: () => true })
-            .overrideGuard(ResortMemberGuard)
-            .useValue({ canActivate: () => true })
-            .compile();
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [FaqController],
+      providers: [{ provide: FaqService, useValue: service }],
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(ResortMemberGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
-        controller = module.get<FaqController>(FaqController);
+    controller = module.get<FaqController>(FaqController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+
+  it('delegates create to the service', async () => {
+    const dto = { question: 'Where?', answer: 'Here' };
+    service.create.mockResolvedValue({ id: 1, ...dto });
+
+    await controller.create('resort-1', dto);
+
+    expect(service.create).toHaveBeenCalledWith('resort-1', dto);
+  });
+
+  it('delegates findAll to the service', async () => {
+    service.findAll.mockResolvedValue({
+      data: [{ id: 1, question: 'Where?', answer: 'Here' }],
+      total: 1,
+      page: 1,
+      limit: 10,
     });
 
-    it('should be defined', () => {
-        expect(controller).toBeDefined();
+    await controller.findAll('resort-1', {});
+
+    expect(service.findAll).toHaveBeenCalledWith('resort-1', {});
+  });
+
+  it('delegates findOne to the service', async () => {
+    service.findOne.mockResolvedValue({
+      id: 1,
+      question: 'Where?',
+      answer: 'Here',
     });
 
-    it('delegates create to the service', async () => {
-        const dto = { question: 'Where?', answer: 'Here' };
-        service.create.mockResolvedValue({ id: 1, ...dto });
+    await controller.findOne('resort-1', 1);
 
-        await controller.create('resort-1', dto);
+    expect(service.findOne).toHaveBeenCalledWith('resort-1', 1);
+  });
 
-        expect(service.create).toHaveBeenCalledWith('resort-1', dto);
+  it('delegates update to the service', async () => {
+    const dto = { answer: 'New answer' };
+    service.update.mockResolvedValue({
+      id: 1,
+      question: 'Where?',
+      answer: 'New answer',
     });
 
-    it('delegates findAll to the service', async () => {
-        service.findAll.mockResolvedValue({ data: [{ id: 1, question: 'Where?', answer: 'Here' }], total: 1, page: 1, limit: 10 });
+    await controller.update('resort-1', 1, dto);
 
-        await controller.findAll('resort-1', {});
+    expect(service.update).toHaveBeenCalledWith('resort-1', 1, dto);
+  });
 
-        expect(service.findAll).toHaveBeenCalledWith('resort-1', {});
-    });
-
-    it('delegates findOne to the service', async () => {
-        service.findOne.mockResolvedValue({ id: 1, question: 'Where?', answer: 'Here' });
-
-        await controller.findOne('resort-1', 1);
-
-        expect(service.findOne).toHaveBeenCalledWith('resort-1', 1);
-    });
-
-    it('delegates update to the service', async () => {
-        const dto = { answer: 'New answer' };
-        service.update.mockResolvedValue({ id: 1, question: 'Where?', answer: 'New answer' });
-
-        await controller.update('resort-1', 1, dto);
-
-        expect(service.update).toHaveBeenCalledWith('resort-1', 1, dto);
-    });
-
-    it('delegates remove to the service', () => {
-        controller.remove('resort-1', 1);
-        expect(service.remove).toHaveBeenCalledWith('resort-1', 1);
-    });
+  it('delegates remove to the service', () => {
+    controller.remove('resort-1', 1);
+    expect(service.remove).toHaveBeenCalledWith('resort-1', 1);
+  });
 });

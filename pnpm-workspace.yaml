@@ -4,13 +4,17 @@ allowBuilds:
   '@google/genai': true
   '@scarf/scarf': true
   bcrypt: true
+  cpu-features: true
   msgpackr-extract: true
   protobufjs: true
+  ssh2: true
   unrs-resolver: true
 onlyBuiltDependencies:
   - '@google/genai'
   - '@scarf/scarf'
   - bcrypt
+  - cpu-features
   - msgpackr-extract
   - protobufjs
+  - ssh2
   - unrs-resolver

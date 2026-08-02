@@ -11,8 +11,17 @@ import { AuthModule } from '../auth/auth.module';
 import { MailModule } from '../mail/mail.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([PhoneChange, Resort]), AuthModule, MailModule],
-    providers: [PhoneChangeRepository, ResortRepository, PhoneChangeService, ResortOwnerGuard],
-    controllers: [PhoneChangeController],
+  imports: [
+    TypeOrmModule.forFeature([PhoneChange, Resort]),
+    AuthModule,
+    MailModule,
+  ],
+  providers: [
+    PhoneChangeRepository,
+    ResortRepository,
+    PhoneChangeService,
+    ResortOwnerGuard,
+  ],
+  controllers: [PhoneChangeController],
 })
-export class PhoneChangeModule { }
+export class PhoneChangeModule {}

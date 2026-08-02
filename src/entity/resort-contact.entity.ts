@@ -2,24 +2,24 @@ import { Column, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Resort } from './resort.entity';
 
 export enum ContactType {
-    PHONE = 'Phone',
-    EMAIL = 'Email',
+  PHONE = 'Phone',
+  EMAIL = 'Email',
 }
 
 @Entity()
 export class ResortContact {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-    @Column()
-    contact_name: string;
+  @Column()
+  contact_name: string;
 
-    @Column({ type: 'enum', enum: ContactType })
-    type: ContactType;
+  @Column({ type: 'enum', enum: ContactType })
+  type: ContactType;
 
-    @Column()
-    contact: string;
+  @Column()
+  contact: string;
 
-    @ManyToOne(() => Resort, (resort) => resort.contacts)
-    resort: Resort;
+  @ManyToOne(() => Resort, (resort) => resort.contacts)
+  resort: Resort;
 }

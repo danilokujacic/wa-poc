@@ -23,7 +23,15 @@ describe('WhatsappController', () => {
         { provide: MessageBatchProducer, useValue: { addMessage: jest.fn() } },
         { provide: ResortContextService, useValue: { prewarm: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
-        { provide: getLoggerToken(WhatsappService.name), useValue: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } },
+        {
+          provide: getLoggerToken(WhatsappService.name),
+          useValue: {
+            info: jest.fn(),
+            error: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+          },
+        },
       ],
     })
       .overrideGuard(WebhookSignatureGuard)

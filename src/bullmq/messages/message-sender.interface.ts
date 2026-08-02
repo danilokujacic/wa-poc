@@ -1,5 +1,5 @@
 export interface MessageSender {
-    sendText(phoneNumberId: string, to: string, text: string): Promise<void>;
+  sendText(phoneNumberId: string, to: string, text: string): Promise<void>;
 }
 
 export const MESSAGE_SENDER = Symbol('MESSAGE_SENDER');
@@ -9,11 +9,11 @@ export const MESSAGE_SENDER = Symbol('MESSAGE_SENDER');
  * recipient) apart from a transient one (rate limited, provider having a bad moment) and decide
  * whether retrying is even worth attempting. */
 export class WhatsappSendError extends Error {
-    constructor(
-        public readonly status: number,
-        message: string,
-    ) {
-        super(message);
-        this.name = 'WhatsappSendError';
-    }
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'WhatsappSendError';
+  }
 }

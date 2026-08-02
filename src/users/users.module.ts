@@ -14,15 +14,19 @@ import { AuthModule } from '../auth/auth.module';
 import { EmailConfirmationModule } from '../email-confirmation/email-confirmation.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([User, Resort]), AuthModule, EmailConfirmationModule],
-    providers: [
-        UserRepository,
-        ResortRepository,
-        ResortUserService,
-        ResortOwnerGuard,
-        ResortMemberGuard,
-        ResortOwnerOrSelfGuard,
-    ],
-    controllers: [ResortUserController, UsersController],
+  imports: [
+    TypeOrmModule.forFeature([User, Resort]),
+    AuthModule,
+    EmailConfirmationModule,
+  ],
+  providers: [
+    UserRepository,
+    ResortRepository,
+    ResortUserService,
+    ResortOwnerGuard,
+    ResortMemberGuard,
+    ResortOwnerOrSelfGuard,
+  ],
+  controllers: [ResortUserController, UsersController],
 })
-export class UsersModule { }
+export class UsersModule {}

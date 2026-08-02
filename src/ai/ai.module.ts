@@ -5,12 +5,12 @@ import { GroqAiClient } from './groq-ai.client';
 import { AI_CLIENT } from './ai-client.interface';
 
 @Module({
-    providers: [
-        AiService,
-        GeminiAiClient,
-        GroqAiClient,
-        { provide: AI_CLIENT, useExisting: GroqAiClient },
-    ],
-    exports: [AiService],
+  providers: [
+    AiService,
+    GeminiAiClient,
+    GroqAiClient,
+    { provide: AI_CLIENT, useExisting: GroqAiClient },
+  ],
+  exports: [AiService],
 })
-export class AiModule { }
+export class AiModule {}

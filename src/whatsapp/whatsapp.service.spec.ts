@@ -18,9 +18,20 @@ describe('WhatsappService', () => {
       providers: [
         WhatsappService,
         { provide: MessageBatchProducer, useValue: { addMessage: jest.fn() } },
-        { provide: ResortContextService, useValue: { get: jest.fn().mockResolvedValue(null) } },
+        {
+          provide: ResortContextService,
+          useValue: { get: jest.fn().mockResolvedValue(null) },
+        },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
-        { provide: getLoggerToken(WhatsappService.name), useValue: { info: jest.fn(), error: jest.fn(), debug: jest.fn(), warn: jest.fn() } },
+        {
+          provide: getLoggerToken(WhatsappService.name),
+          useValue: {
+            info: jest.fn(),
+            error: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -39,12 +50,16 @@ describe('WhatsappService', () => {
   it('should return challenge if token is valid', () => {
     const validToken = process.env.WHATSAPP_VERIFY_TOKEN || 'test_token';
     const challenge = 'test_challenge';
-    expect(service.verifyTokenAndReturnChallenge(validToken, challenge)).toBe(challenge);
+    expect(service.verifyTokenAndReturnChallenge(validToken, challenge)).toBe(
+      challenge,
+    );
   });
 
   it('should return null if token is invalid', () => {
     const challenge = 'test_challenge';
-    expect(service.verifyTokenAndReturnChallenge('invalid_token', challenge)).toBeNull();
+    expect(
+      service.verifyTokenAndReturnChallenge('invalid_token', challenge),
+    ).toBeNull();
   });
 
   const buildBody = (overrides: { type?: string; text?: string } = {}) => ({
@@ -58,7 +73,9 @@ describe('WhatsappService', () => {
                   id: 'message_id',
                   from: 'guest_number',
                   type: overrides.type ?? 'text',
-                  ...(overrides.type === 'image' ? {} : { text: { body: overrides.text ?? 'Hello' } }),
+                  ...(overrides.type === 'image'
+                    ? {}
+                    : { text: { body: overrides.text ?? 'Hello' } }),
                   timestamp: '1234567890',
                 },
               ],
@@ -81,7 +98,12 @@ describe('WhatsappService', () => {
     const mockEventEmitter = { emit: jest.fn() };
     const mockLogger = { info: jest.fn(), error: jest.fn() };
 
-    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+    const serviceWithMocks = new WhatsappService(
+      mockProducer as any,
+      mockResortContext as any,
+      mockEventEmitter as any,
+      mockLogger as any,
+    );
 
     await serviceWithMocks.processIncoming(buildBody());
 
@@ -107,26 +129,41 @@ describe('WhatsappService', () => {
     const mockEventEmitter = { emit: jest.fn() };
     const mockLogger = { info: jest.fn(), error: jest.fn() };
 
-    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+    const serviceWithMocks = new WhatsappService(
+      mockProducer as any,
+      mockResortContext as any,
+      mockEventEmitter as any,
+      mockLogger as any,
+    );
 
     await serviceWithMocks.processIncoming(buildBody({ text: 'Hi there' }));
 
-    expect(mockEventEmitter.emit).toHaveBeenCalledWith(DESK_EVENTS.MESSAGE_RECEIVED, {
-      resortId: 'resort-1',
-      guestPhoneNumber: 'guest_number',
-      body: 'Hi there',
-      sentAt: new Date(1234567890 * 1000).toISOString(),
-      traceId: 'message_id',
-    });
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+      DESK_EVENTS.MESSAGE_RECEIVED,
+      {
+        resortId: 'resort-1',
+        guestPhoneNumber: 'guest_number',
+        body: 'Hi there',
+        sentAt: new Date(1234567890 * 1000).toISOString(),
+        traceId: 'message_id',
+      },
+    );
   });
 
   it('does not let a desk-recording failure block the rest of processing', async () => {
     const mockProducer = { addMessage: jest.fn() };
-    const mockResortContext = { get: jest.fn().mockRejectedValue(new Error('resort lookup failed')) };
+    const mockResortContext = {
+      get: jest.fn().mockRejectedValue(new Error('resort lookup failed')),
+    };
     const mockEventEmitter = { emit: jest.fn() };
     const mockLogger = { info: jest.fn(), error: jest.fn() };
 
-    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+    const serviceWithMocks = new WhatsappService(
+      mockProducer as any,
+      mockResortContext as any,
+      mockEventEmitter as any,
+      mockLogger as any,
+    );
 
     await serviceWithMocks.processIncoming(buildBody());
 
@@ -144,7 +181,12 @@ describe('WhatsappService', () => {
     const mockLogger = { info: jest.fn(), error: jest.fn() };
     const mockSendText = jest.fn();
 
-    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+    const serviceWithMocks = new WhatsappService(
+      mockProducer as any,
+      mockResortContext as any,
+      mockEventEmitter as any,
+      mockLogger as any,
+    );
     serviceWithMocks.sendText = mockSendText;
 
     await serviceWithMocks.processIncoming(buildBody({ type: 'image' }));
@@ -152,18 +194,25 @@ describe('WhatsappService', () => {
     expect(mockSendText).toHaveBeenCalledWith(
       '1211777188687734',
       '38269280401',
-      "Sorry, I can only read text messages for now. How can I help you?",
+      'Sorry, I can only read text messages for now. How can I help you?',
     );
   });
 
   it('should handle errors when adding message to queue', async () => {
-    const mockProducer = { addMessage: jest.fn().mockRejectedValue(new Error('Queue error')) };
+    const mockProducer = {
+      addMessage: jest.fn().mockRejectedValue(new Error('Queue error')),
+    };
     const mockResortContext = { get: jest.fn().mockResolvedValue(null) };
     const mockEventEmitter = { emit: jest.fn() };
     const mockLogger = { info: jest.fn(), error: jest.fn() };
     const mockSendText = jest.fn();
 
-    const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+    const serviceWithMocks = new WhatsappService(
+      mockProducer as any,
+      mockResortContext as any,
+      mockEventEmitter as any,
+      mockLogger as any,
+    );
     serviceWithMocks.sendText = mockSendText;
 
     await serviceWithMocks.processIncoming(buildBody());
@@ -171,10 +220,13 @@ describe('WhatsappService', () => {
     expect(mockSendText).toHaveBeenCalledWith(
       '1211777188687734',
       '38269280401',
-      "Sorry, I cannot process your message right now. Please try again later.",
+      'Sorry, I cannot process your message right now. Please try again later.',
     );
     expect(mockLogger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ traceId: 'message_id', conversationKey: 'phone_number_id:guest_number' }),
+      expect.objectContaining({
+        traceId: 'message_id',
+        conversationKey: 'phone_number_id:guest_number',
+      }),
       expect.stringContaining('Error adding message to queue:'),
     );
   });
@@ -193,21 +245,40 @@ describe('WhatsappService', () => {
       jest.spyOn(global, 'fetch').mockResolvedValue({
         ok: false,
         status: 401,
-        text: () => Promise.resolve('{"error":{"message":"Authentication Error","code":190}}'),
+        text: () =>
+          Promise.resolve(
+            '{"error":{"message":"Authentication Error","code":190}}',
+          ),
       } as Response);
 
-      const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+      const serviceWithMocks = new WhatsappService(
+        mockProducer as any,
+        mockResortContext as any,
+        mockEventEmitter as any,
+        mockLogger as any,
+      );
 
-      await expect(serviceWithMocks.sendText('phone-id', 'guest-number', 'Hello')).rejects.toThrow('401');
-      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Failed to send message: 401'));
+      await expect(
+        serviceWithMocks.sendText('phone-id', 'guest-number', 'Hello'),
+      ).rejects.toThrow('401');
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to send message: 401'),
+      );
     });
 
     it('resolves without throwing when the WhatsApp API accepts the send', async () => {
       jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true } as Response);
 
-      const serviceWithMocks = new WhatsappService(mockProducer as any, mockResortContext as any, mockEventEmitter as any, mockLogger as any);
+      const serviceWithMocks = new WhatsappService(
+        mockProducer as any,
+        mockResortContext as any,
+        mockEventEmitter as any,
+        mockLogger as any,
+      );
 
-      await expect(serviceWithMocks.sendText('phone-id', 'guest-number', 'Hello')).resolves.toBeUndefined();
+      await expect(
+        serviceWithMocks.sendText('phone-id', 'guest-number', 'Hello'),
+      ).resolves.toBeUndefined();
     });
   });
 });

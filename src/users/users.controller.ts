@@ -11,12 +11,12 @@ import { UserResponseDto } from './dto/user-response.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
-    constructor(private readonly resortUserService: ResortUserService) { }
+  constructor(private readonly resortUserService: ResortUserService) {}
 
-    @Get('me')
-    @ApiOperation({ summary: 'Get the currently authenticated user' })
-    async me(@Req() request: Request & { user: JwtPayload }) {
-        const user = await this.resortUserService.findMe(request.user.sub);
-        return UserResponseDto.fromEntity(user);
-    }
+  @Get('me')
+  @ApiOperation({ summary: 'Get the currently authenticated user' })
+  async me(@Req() request: Request & { user: JwtPayload }) {
+    const user = await this.resortUserService.findMe(request.user.sub);
+    return UserResponseDto.fromEntity(user);
+  }
 }

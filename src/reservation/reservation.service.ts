@@ -143,7 +143,8 @@ export class ReservationService {
       reservation.startDate,
       reservation.endDate,
     );
-    reservation.isOverbooked = overlapping.length > reservation.feature.quantity;
+    reservation.isOverbooked =
+      overlapping.length > reservation.feature.quantity;
     return reservation;
   }
 

@@ -9,9 +9,13 @@ import { EmailConfirmationCleanupScheduler } from './email-confirmation-cleanup.
 import { MailModule } from '../mail/mail.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([EmailConfirmation, User]), MailModule],
-    providers: [EmailConfirmationRepository, EmailConfirmationService, EmailConfirmationCleanupScheduler],
-    controllers: [EmailConfirmationController],
-    exports: [EmailConfirmationService],
+  imports: [TypeOrmModule.forFeature([EmailConfirmation, User]), MailModule],
+  providers: [
+    EmailConfirmationRepository,
+    EmailConfirmationService,
+    EmailConfirmationCleanupScheduler,
+  ],
+  controllers: [EmailConfirmationController],
+  exports: [EmailConfirmationService],
 })
-export class EmailConfirmationModule { }
+export class EmailConfirmationModule {}

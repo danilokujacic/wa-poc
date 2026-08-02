@@ -63,30 +63,60 @@ services:
     depends_on:
       - loki
 
-  # app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   image: wa-poc-app:latest
-  #   restart: unless-stopped
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #     REDIS_HOST: redis
-  #     REDIS_PORT: 6379
-  #     LOKI_HOST: http://loki:3100
-  #     NODE_ENV: production
-  #   ports:
-  #     - "${PORT:-3000}:${PORT:-3000}"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     loki:
-  #       condition: service_started
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wa-poc-app:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOKI_HOST: http://loki:3100
+      NODE_ENV: production
+    # No host port published here on purpose: --scale app=2 (see deploy.sh)
+    # runs two containers of this service at once during a cutover, and two
+    # containers can't both bind the same host port. `proxy` is what's
+    # actually reachable from outside; it load-balances across whatever
+    # `app` replicas are currently running, resolved fresh per-request via
+    # Docker's internal DNS (see Caddyfile) so a freshly started replica is
+    # picked up without a proxy restart.
+    expose:
+      - '3002'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3002/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      loki:
+        condition: service_started
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:80'
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddyfile:ro
+    command: caddy run --config /etc/caddyfile --adapter caddyfile
+    depends_on:
+      - app
 
 volumes:
   postgres_data:

@@ -1,4 +1,10 @@
-import { ArgumentsHost, BadRequestException, HttpStatus } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
 import { GlobalExceptionFilter } from './global-exception.filter';
 
 function hostWith(
@@ -13,10 +19,15 @@ function hostWith(
   } as unknown as ArgumentsHost;
 }
 
+function queryFailedError(code: string): QueryFailedError {
+  const driverError = { code, message: `driver detail for ${code}` };
+  return new QueryFailedError('SELECT 1', [], driverError as never);
+}
+
 describe('GlobalExceptionFilter', () => {
   let filter: GlobalExceptionFilter;
   let response: { status: jest.Mock; json: jest.Mock };
-  let consoleErrorSpy: jest.SpyInstance;
+  let loggerErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     filter = new GlobalExceptionFilter();
@@ -24,16 +35,16 @@ describe('GlobalExceptionFilter', () => {
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
     };
-    consoleErrorSpy = jest
-      .spyOn(console, 'error')
+    loggerErrorSpy = jest
+      .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
   });
 
   afterEach(() => {
-    consoleErrorSpy.mockRestore();
+    loggerErrorSpy.mockRestore();
   });
 
-  it('maps an HttpException to its own status and response body', () => {
+  it('maps an HttpException to its own status and response body, passing its message through as-is', () => {
     const request = { method: 'GET', url: '/resort/1' };
     const exception = new BadRequestException('Invalid input');
 
@@ -47,12 +58,14 @@ describe('GlobalExceptionFilter', () => {
         message: exception.getResponse(),
       }),
     );
-    expect(consoleErrorSpy).toHaveBeenCalledWith('[GET /resort/1]', exception);
+    expect(loggerErrorSpy).toHaveBeenCalled();
   });
 
-  it('maps a non-HttpException to a generic 500 response', () => {
+  it('maps a non-HttpException to a generic 500 response and never leaks its message', () => {
     const request = { method: 'POST', url: '/resort/1/phone-change' };
-    const exception = new Error('boom');
+    const exception = new Error(
+      'boom — internal detail that must not reach the client',
+    );
 
     filter.catch(exception, hostWith(request, response));
 
@@ -65,6 +78,49 @@ describe('GlobalExceptionFilter', () => {
         path: '/resort/1/phone-change',
         message: 'Internal server error',
       }),
+    );
+    const loggedArgs = loggerErrorSpy.mock.calls[0].join(' ');
+    expect(loggedArgs).toContain('boom');
+  });
+
+  it('maps a Postgres unique-violation (23505) to 409 with a generic message, logging the raw detail', () => {
+    const request = { method: 'POST', url: '/resort' };
+    const exception = queryFailedError('23505');
+
+    filter.catch(exception, hostWith(request, response));
+
+    expect(response.status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statusCode: HttpStatus.CONFLICT,
+        message: 'A record with this value already exists.',
+      }),
+    );
+    const loggedArgs = loggerErrorSpy.mock.calls[0].join(' ');
+    expect(loggedArgs).toContain('driver detail for 23505');
+  });
+
+  it('maps a Postgres not-null violation (23502) to 400 with a generic message', () => {
+    const exception = queryFailedError('23502');
+
+    filter.catch(exception, hostWith({ method: 'POST', url: '/x' }, response));
+
+    expect(response.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'A required field was missing.' }),
+    );
+  });
+
+  it('maps an unrecognized Postgres error code to a generic 500, never leaking driver detail', () => {
+    const exception = queryFailedError('99999');
+
+    filter.catch(exception, hostWith({ method: 'POST', url: '/x' }, response));
+
+    expect(response.status).toHaveBeenCalledWith(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+    );
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Internal server error' }),
     );
   });
 

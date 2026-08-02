@@ -9,9 +9,14 @@ import { ResortOwnerGuard } from '../resort/guards/resort-owner.guard';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([ResortContact]), AuthModule],
-    providers: [ResortContactRepository, ResortContactService, ResortMemberGuard, ResortOwnerGuard],
-    exports: [ResortContactRepository],
-    controllers: [ResortContactController],
+  imports: [TypeOrmModule.forFeature([ResortContact]), AuthModule],
+  providers: [
+    ResortContactRepository,
+    ResortContactService,
+    ResortMemberGuard,
+    ResortOwnerGuard,
+  ],
+  exports: [ResortContactRepository],
+  controllers: [ResortContactController],
 })
-export class ResortContactModule { }
+export class ResortContactModule {}
