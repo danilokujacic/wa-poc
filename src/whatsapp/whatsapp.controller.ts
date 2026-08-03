@@ -11,6 +11,7 @@ import { WhatsappService } from './whatsapp.service';
 import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
 import { GlobalWebhookThrottlerGuard } from './guards/global-webhook-throttler.guard';
 import { WebhookAckResponseDto } from './dto/webhook-ack-response.dto';
+import type { WhatsappWebhookPayload } from './interfaces/whatsapp-webhook-payload.interface';
 
 @Controller('whatsapp')
 export class WhatsappController {
@@ -40,7 +41,7 @@ export class WhatsappController {
   @Post()
   @UseGuards(WebhookSignatureGuard, GlobalWebhookThrottlerGuard)
   @HttpCode(200)
-  handleWebhook(@Body() body: any) {
+  handleWebhook(@Body() body: WhatsappWebhookPayload) {
     this.whatsappService.processIncoming(body).catch((err) => {
       console.error('Error processing webhook event:', err);
     });

@@ -55,7 +55,7 @@ describe('DeskService', () => {
   beforeEach(async () => {
     conversationRepository = {
       findOrCreate: jest.fn(),
-      save: jest.fn(async (entity) => entity),
+      save: jest.fn((entity: object) => entity),
       findOne: jest.fn(),
       findAllForResort: jest.fn(),
       findForResort: jest.fn(),
@@ -63,8 +63,8 @@ describe('DeskService', () => {
       updateLastMessageSentAt: jest.fn().mockResolvedValue(undefined),
     };
     messageRepository = {
-      create: jest.fn((dto) => dto),
-      save: jest.fn(async (entity) => ({
+      create: jest.fn((dto: object) => dto),
+      save: jest.fn((entity: object) => ({
         id: 'message-1',
         createdAt: new Date('2026-01-01'),
         ...entity,
@@ -360,6 +360,7 @@ describe('DeskService', () => {
       phoneNumberId: '1211777188687734',
       guestPhoneNumber: '38269280401',
       text: 'On it!',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.any() is typed `any` by @types/jest
       traceId: expect.any(String),
     });
   });

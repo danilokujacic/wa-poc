@@ -10,6 +10,7 @@ import {
 import type { Response } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -34,6 +35,14 @@ export class AuthController {
       forbidNonWhitelisted: true,
     }),
   )
+  // Tighter than the global default — registration is a classic spam/abuse
+  // target, and each successful call also sends a real confirmation email.
+  @Throttle({
+    default: {
+      limit: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 5),
+      ttl: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000),
+    },
+  })
   async register(
     @Body() registerDto: RegisterDto,
     @Res({ passthrough: true }) response: Response,
@@ -53,6 +62,16 @@ export class AuthController {
       forbidNonWhitelisted: true,
     }),
   )
+  // Tighter than the global default — the classic brute-force/credential-
+  // stuffing target. Per-IP tracking (the guard's default) is the right
+  // choice here, unlike the webhook guards, since a real login attempt has
+  // a real client IP behind it, not a relay.
+  @Throttle({
+    default: {
+      limit: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 5),
+      ttl: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000),
+    },
+  })
   async login(
     @Body() loginDto: LoginDto,
     @Res({ passthrough: true }) response: Response,

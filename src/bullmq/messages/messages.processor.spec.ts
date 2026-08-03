@@ -1,17 +1,11 @@
-import { Test } from '@nestjs/testing';
-import { getLoggerToken } from 'nestjs-pino';
-import { MESSAGE_SENDER } from './message-sender.interface';
-import { ResortContextService } from 'src/resort/resort-context.service';
-import { ResortFeatureRepository } from 'src/repository/resort-feature.repository';
-import { ReservationRepository } from 'src/repository/reservation.repository';
-import { REDIS_CLIENT } from 'src/redis/redis.provider';
-import { MessageBatchProducer } from './messages.producer';
+import type { Job } from 'bullmq';
+import type { FlushJobData } from './messages.producer';
 import { MessageFlushProcessor } from './messages.processor';
 import { AiService } from 'src/ai/ai.service';
 import { ReservationStatus } from 'src/entity/reservation.entity';
-import { ConversationRepository } from 'src/repository/conversation.repository';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DESK_EVENTS } from 'src/desk/desk.events';
+
+type MockFlushJob = Job<FlushJobData>;
 
 function mockRedis(
   overrides: Partial<
@@ -46,73 +40,6 @@ function mockLogger() {
 }
 
 describe('MessageProcessor', () => {
-  beforeEach(() => {
-    Test.createTestingModule({
-      providers: [
-        MessageFlushProcessor,
-        {
-          provide: MessageBatchProducer,
-          useValue: {
-            drain: jest.fn().mockResolvedValue([]),
-          },
-        },
-        {
-          provide: AiService,
-          useValue: {
-            generateReply: jest.fn().mockResolvedValue(''),
-          },
-        },
-        {
-          provide: ResortContextService,
-          useValue: {
-            get: jest.fn().mockResolvedValue(null),
-          },
-        },
-        {
-          provide: ResortFeatureRepository,
-          useValue: {
-            find: jest.fn().mockResolvedValue([]),
-          },
-        },
-        {
-          provide: ReservationRepository,
-          useValue: {
-            findLatestPendingForGuest: jest.fn().mockResolvedValue(null),
-            countActiveForFeature: jest.fn().mockResolvedValue(0),
-            create: jest.fn((dto) => dto),
-            save: jest.fn(async (entity) => entity),
-          },
-        },
-        {
-          provide: ConversationRepository,
-          useValue: {
-            isHumanHandled: jest.fn().mockResolvedValue(false),
-          },
-        },
-        {
-          provide: EventEmitter2,
-          useValue: {
-            emit: jest.fn(),
-          },
-        },
-        {
-          provide: MESSAGE_SENDER,
-          useValue: {
-            sendText: jest.fn(),
-          },
-        },
-        {
-          provide: REDIS_CLIENT,
-          useValue: mockRedis(),
-        },
-        {
-          provide: getLoggerToken(MessageFlushProcessor.name),
-          useValue: mockLogger(),
-        },
-      ],
-    }).compile();
-  });
-
   const job = {
     data: {
       conversationKey: '123:456',
@@ -120,7 +47,7 @@ describe('MessageProcessor', () => {
       guestNumber: '456',
       guestName: 'John Doe',
     },
-  } as any;
+  } as unknown as MockFlushJob;
 
   it('should return early if there are no messages to flush', async () => {
     const processor = new MessageFlushProcessor(
@@ -141,6 +68,7 @@ describe('MessageProcessor', () => {
 
     await processor.process(job);
 
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest.fn() mock, no `this` usage
     expect(processor['producer'].drain).toHaveBeenCalledWith('123:456');
   });
   it('should process messages and send a reply', async () => {
@@ -218,6 +146,8 @@ describe('MessageProcessor', () => {
     // With a resort resolved, delivery happens durably via the desk pipeline instead of a
     // direct send here — see WA_SEND_QUEUE.
     expect(mockSendText).not.toHaveBeenCalled();
+    // expect.any() is typed `any` by @types/jest, hence the disables below.
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment */
     expect(mockEmit).toHaveBeenCalledWith(DESK_EVENTS.AI_REPLIED, {
       resortId: 'resort-1',
       guestPhoneNumber: '456',
@@ -226,6 +156,7 @@ describe('MessageProcessor', () => {
       phoneNumberId: '123',
       traceId: expect.any(String),
     });
+    /* eslint-enable @typescript-eslint/no-unsafe-assignment */
   });
   it('skips AI generation entirely once an employee has taken over the conversation', async () => {
     const mockDrain = jest
@@ -819,8 +750,8 @@ describe('MessageProcessor', () => {
       quantity: 5,
     };
     const mockSendText = jest.fn();
-    const mockSave = jest.fn(async (entity) => entity);
-    const mockCreate = jest.fn((dto) => dto);
+    const mockSave = jest.fn((entity: object) => entity);
+    const mockCreate = jest.fn((dto: object) => dto);
     const mockGenerateReply = jest
       .fn()
       .mockResolvedValue(
@@ -972,9 +903,10 @@ describe('MessageProcessor', () => {
     await processor.process(job);
 
     expect(mockSave).not.toHaveBeenCalled();
-    const emittedEvent = mockEmit.mock.calls.find(
+    const calls = mockEmit.mock.calls as [string, { body: string }][];
+    const emittedEvent = calls.find(
       ([eventName]) => eventName === DESK_EVENTS.AI_REPLIED,
-    )?.[1];
+    )?.[1] as { body: string };
     expect(emittedEvent.body).not.toContain('[RESERVE');
     expect(emittedEvent.body).toContain('Almost there!');
   });
@@ -1039,7 +971,7 @@ describe('MessageProcessor', () => {
       status: ReservationStatus.PENDING,
       feature: { name: 'Cabana' },
     };
-    const mockSave = jest.fn(async (entity) => entity);
+    const mockSave = jest.fn((entity: object) => entity);
     const mockSendText = jest.fn();
     const mockGenerateReply = jest.fn();
     const redis = mockRedis();
@@ -1091,7 +1023,7 @@ describe('MessageProcessor', () => {
       status: ReservationStatus.PENDING,
       feature: { name: 'Cabana' },
     };
-    const mockSave = jest.fn(async (entity) => entity);
+    const mockSave = jest.fn((entity: object) => entity);
     const mockSendText = jest.fn();
 
     const processor = new MessageFlushProcessor(

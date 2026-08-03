@@ -8,7 +8,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
  */
 @Injectable()
 export class ChannexWebhookThrottlerGuard extends ThrottlerGuard {
-  protected async getTracker(): Promise<string> {
-    return 'channex-webhook';
+  protected getTracker(): Promise<string> {
+    return Promise.resolve('channex-webhook');
   }
 }

@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import type { Request } from 'express';
 import { ResortController } from './resort.controller';
 import { ResortService } from './resort.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResortOwnerGuard } from './guards/resort-owner.guard';
 import { ResortMemberGuard } from './guards/resort-member.guard';
+import type { JwtPayload } from '../auth/jwt-payload.interface';
 
 describe('ResortController', () => {
   let controller: ResortController;
@@ -47,7 +49,7 @@ describe('ResortController', () => {
     const dto = { name: 'Sunset Bay', phoneNumber: '123' };
     const request = {
       user: { sub: 'user-1', email: 'a@b.com', role: 'Owner', resortId: null },
-    } as any;
+    } as unknown as Request & { user: JwtPayload };
     service.create.mockResolvedValue({
       id: 'resort-1',
       name: 'Sunset Bay',
@@ -94,8 +96,8 @@ describe('ResortController', () => {
     expect(service.update).toHaveBeenCalledWith('1', dto);
   });
 
-  it('delegates remove to the service', () => {
-    controller.remove('1');
+  it('delegates remove to the service', async () => {
+    await controller.remove('1');
     expect(service.remove).toHaveBeenCalledWith('1');
   });
 });

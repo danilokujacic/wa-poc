@@ -4,10 +4,11 @@ import { AppService } from './app.service';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { ResortModule } from './resort/resort.module';
 import { FaqModule } from './faq/faq.module';
@@ -133,6 +134,15 @@ import appConfig from './config/app.config';
     ScheduleModule.forRoot(),
     EventEmitterModule.forRoot(),
   ],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Loose, generous safety net applied to every route by default (same
+    // "default" throttler config above, per-IP tracking) — not meant to
+    // stop determined abuse on its own, just to make sure no route is
+    // completely unprotected by accident. Routes with real stakes (auth,
+    // webhooks, desk) layer a tighter, route-specific guard on top via
+    // @Throttle(...)/their own guard subclass; this doesn't replace those.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}

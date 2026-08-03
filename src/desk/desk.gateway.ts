@@ -39,7 +39,7 @@ export class DeskGateway implements OnGatewayConnection, OnGatewayDisconnect {
         throw new UnauthorizedException('User is not tied to a resort');
       }
 
-      client.data.user = user;
+      (client.data as { user?: JwtPayload }).user = user;
       await client.join(this.resortRoom(user.resortId));
       this.logger.info(
         `Desk socket ${client.id} connected for resort ${user.resortId}`,

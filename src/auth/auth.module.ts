@@ -12,6 +12,7 @@ import { EmailConfirmationModule } from '../email-confirmation/email-confirmatio
       secret: process.env.JWT_SECRET,
       // jsonwebtoken types expiresIn against ms's template-literal StringValue type,
       // which an env-sourced string can't satisfy statically.
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN ?? '1d') as any },
     }),
     EmailConfirmationModule,

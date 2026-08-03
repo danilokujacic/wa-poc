@@ -16,8 +16,8 @@ describe('FaqService', () => {
 
   beforeEach(async () => {
     repository = {
-      create: jest.fn((dto) => dto),
-      save: jest.fn(async (entity) => entity),
+      create: jest.fn((dto: object) => dto),
+      save: jest.fn((entity: object) => entity),
       find: jest.fn(),
       findAndCount: jest.fn(),
       findOne: jest.fn(),
@@ -75,10 +75,12 @@ describe('FaqService', () => {
     const result = await service.findAll('resort-1', { search: 'here' });
 
     expect(repository.findAndCount).toHaveBeenCalledWith({
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment -- expect.anything() is typed `any` by @types/jest */
       where: [
         { resort: { id: 'resort-1' }, question: expect.anything() },
         { resort: { id: 'resort-1' }, answer: expect.anything() },
       ],
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment */
       order: { id: 'ASC' },
       skip: 0,
       take: 10,

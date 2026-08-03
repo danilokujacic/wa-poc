@@ -97,8 +97,8 @@ describe('ResortFeatureController', () => {
     expect(service.update).toHaveBeenCalledWith('resort-1', 'feature-1', dto);
   });
 
-  it('delegates remove to the service', () => {
-    controller.remove('resort-1', 'feature-1');
+  it('delegates remove to the service', async () => {
+    await controller.remove('resort-1', 'feature-1');
     expect(service.remove).toHaveBeenCalledWith('resort-1', 'feature-1');
   });
 });

@@ -10,9 +10,7 @@ import type { JwtPayload } from '../../auth/jwt-payload.interface';
  */
 @Injectable()
 export class DeskThrottlerGuard extends ThrottlerGuard {
-  protected async getTracker(
-    req: Request & { user?: JwtPayload },
-  ): Promise<string> {
-    return req.user?.sub ?? req.ip ?? 'unknown';
+  protected getTracker(req: Request & { user?: JwtPayload }): Promise<string> {
+    return Promise.resolve(req.user?.sub ?? req.ip ?? 'unknown');
   }
 }

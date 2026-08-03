@@ -29,7 +29,24 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_' },
+      ],
       "prettier/prettier": ["error", { endOfLine: "auto" }],
+    },
+  },
+  {
+    // Constructing a service under test with `new Service({...} as any, ...)`
+    // for each DI dependency is the standard NestJS unit-test pattern here
+    // (see any *.spec.ts) — the alternative is fully typing every mock's
+    // every method for ~90 constructor calls across the suite, for zero
+    // real safety gain (these are compile-time-only casts on test doubles,
+    // never a genuine runtime "unsafe" value). Relaxed for spec files only;
+    // production code still gets the strict version.
+    files: ['**/*.spec.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-argument': 'off',
     },
   },
 );

@@ -154,8 +154,8 @@ describe('ReservationController', () => {
     );
   });
 
-  it('delegates remove to the service', () => {
-    controller.remove('resort-1', 'reservation-1');
+  it('delegates remove to the service', async () => {
+    await controller.remove('resort-1', 'reservation-1');
     expect(service.remove).toHaveBeenCalledWith('resort-1', 'reservation-1');
   });
 });

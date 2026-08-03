@@ -5,6 +5,7 @@ import { ClassSerializerInterceptor } from '@nestjs/common';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './exception/global-exception.filter';
@@ -20,6 +21,11 @@ async function bootstrap() {
   // current job on SIGTERM instead of being killed mid-write.
   app.enableShutdownHooks();
   app.useGlobalFilters(new GlobalExceptionFilter());
+  // Sets baseline security response headers (HSTS, X-Content-Type-Options,
+  // X-Frame-Options/CSP frame-ancestors, etc). Applied before everything
+  // else so every response gets them, including error responses from the
+  // exception filter above.
+  app.use(helmet());
   app.use(cookieParser());
   app.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector), {
@@ -54,4 +60,8 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
 }
-bootstrap();
+bootstrap().catch((err: unknown) => {
+  // Logger isn't wired up yet if bootstrap failed this early.
+  console.error('Fatal error during bootstrap:', err);
+  process.exit(1);
+});

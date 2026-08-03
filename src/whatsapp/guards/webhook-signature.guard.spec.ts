@@ -1,13 +1,16 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { WebhookSignatureGuard } from './webhook-signature.guard';
 
-function contextWith(headers: Record<string, string>, rawBody?: Buffer) {
+function contextWith(
+  headers: Record<string, string>,
+  rawBody?: Buffer,
+): ExecutionContext {
   return {
     switchToHttp: () => ({
       getRequest: () => ({ headers, rawBody }),
     }),
-  } as any;
+  } as unknown as ExecutionContext;
 }
 
 describe('WebhookSignatureGuard', () => {

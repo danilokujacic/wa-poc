@@ -16,8 +16,8 @@ describe('ResortContactService', () => {
 
   beforeEach(async () => {
     repository = {
-      create: jest.fn((dto) => dto),
-      save: jest.fn(async (entity) => entity),
+      create: jest.fn((dto: object) => dto),
+      save: jest.fn((entity: object) => entity),
       find: jest.fn(),
       findOne: jest.fn(),
       remove: jest.fn(),
@@ -87,10 +87,12 @@ describe('ResortContactService', () => {
     const result = await service.findAll('resort-1', { search: 'front' });
 
     expect(repository.find).toHaveBeenCalledWith({
+      /* eslint-disable @typescript-eslint/no-unsafe-assignment -- expect.anything() is typed `any` by @types/jest */
       where: [
         { resort: { id: 'resort-1' }, contact_name: expect.anything() },
         { resort: { id: 'resort-1' }, contact: expect.anything() },
       ],
+      /* eslint-enable @typescript-eslint/no-unsafe-assignment */
     });
     expect(result).toBe(contacts);
   });

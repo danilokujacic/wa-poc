@@ -87,8 +87,8 @@ describe('FaqController', () => {
     expect(service.update).toHaveBeenCalledWith('resort-1', 1, dto);
   });
 
-  it('delegates remove to the service', () => {
-    controller.remove('resort-1', 1);
+  it('delegates remove to the service', async () => {
+    await controller.remove('resort-1', 1);
     expect(service.remove).toHaveBeenCalledWith('resort-1', 1);
   });
 });

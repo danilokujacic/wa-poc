@@ -57,17 +57,52 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      # Deliberately NOT ${SMTP_HOST} — .env's SMTP_HOST is "localhost",
+      # meant for the app running bare (`pnpm start:dev`) outside Docker.
+      # From inside a container, "localhost" means that container itself,
+      # not the host or a sibling container — confirmed by actually hitting
+      # this exact failure ("dial tcp [::1]:1025: connect: connection
+      # refused") before adding the dedicated GRAFANA_SMTP_* vars below.
+      # (The app's own SMTP_HOST has this identical latent bug when it runs
+      # containerized — out of scope to fix here, flagging it since this is
+      # concrete proof it's real, not theoretical.) Defaults to maildev,
+      # reachable by that compose service name; override
+      # GRAFANA_SMTP_HOST/PORT in .env for a real relay in production.
+      GF_SMTP_ENABLED: 'true'
+      GF_SMTP_HOST: '${GRAFANA_SMTP_HOST:-maildev}:${GRAFANA_SMTP_PORT:-1025}'
+      GF_SMTP_USER: ${SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${SMTP_PASS:-}
+      GF_SMTP_SKIP_VERIFY: 'true'
+      # NOT ${SMTP_FROM} — the app's own SMTP_FROM is "Name <email>" format
+      # (valid for nodemailer's "from" field), but Grafana's
+      # GF_SMTP_FROM_ADDRESS requires a bare address only and fails to
+      # start ("invalid email address for SMTP from_address config") if
+      # given the display-name-wrapped form. Confirmed by actually hitting
+      # that crash and fixing it, not assumed.
+      GF_SMTP_FROM_ADDRESS: grafana-alerts@wa-poc.local
+      # Read by the ${ADMIN_EMAIL} expansion (Go's os.ExpandEnv, confirmed
+      # via `strings` on the grafana binary — NOT the $__env{} macro
+      # syntax, which doesn't exist in this Grafana version despite
+      # appearing in some Grafana docs/blog posts for other contexts) in
+      # infra/grafana/provisioning/alerting/contact-points.yaml.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana_data:/var/lib/grafana
     depends_on:
       - loki
+      - maildev
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    image: wa-poc-app:latest
+    # IMAGE_TAG defaults to "latest" for plain ad-hoc `docker compose build`
+    # runs, but deploy.sh always sets it to the git short SHA before
+    # building — so a running container's image name is a direct pointer
+    # back to the exact commit it's running, and rollback is "redeploy the
+    # image tagged with the previous SHA" instead of "hope you kept a copy."
+    image: wa-poc-app:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - .env

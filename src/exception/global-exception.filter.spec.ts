@@ -79,7 +79,7 @@ describe('GlobalExceptionFilter', () => {
         message: 'Internal server error',
       }),
     );
-    const loggedArgs = loggerErrorSpy.mock.calls[0].join(' ');
+    const loggedArgs = (loggerErrorSpy.mock.calls[0] as unknown[]).join(' ');
     expect(loggedArgs).toContain('boom');
   });
 
@@ -96,7 +96,7 @@ describe('GlobalExceptionFilter', () => {
         message: 'A record with this value already exists.',
       }),
     );
-    const loggedArgs = loggerErrorSpy.mock.calls[0].join(' ');
+    const loggedArgs = (loggerErrorSpy.mock.calls[0] as unknown[]).join(' ');
     expect(loggedArgs).toContain('driver detail for 23505');
   });
 

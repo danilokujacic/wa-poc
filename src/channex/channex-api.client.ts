@@ -21,6 +21,20 @@ interface ChannexEnvelope<T> {
   meta?: { total: number; limit: number; page: number };
 }
 
+// Shape of a Channex API response body — success or error. No runtime
+// schema validation on external JSON here (matches the rest of this app's
+// pattern for third-party API responses); this documents the expected
+// shape per Channex's docs rather than proving it.
+interface ChannexResponseBody {
+  data?: unknown;
+  meta?: { total: number; limit: number; page: number };
+  errors?: {
+    title?: string;
+    code?: string;
+    details?: unknown;
+  };
+}
+
 @Injectable()
 export class ChannexApiClient {
   private readonly logger = new Logger(ChannexApiClient.name);
@@ -72,7 +86,9 @@ export class ChannexApiClient {
     });
 
     const raw = await response.text();
-    const parsed = raw ? JSON.parse(raw) : undefined;
+    const parsed: ChannexResponseBody | undefined = raw
+      ? (JSON.parse(raw) as ChannexResponseBody)
+      : undefined;
 
     if (!response.ok) {
       this.logger.error(parsed);

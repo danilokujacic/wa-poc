@@ -1,0 +1,17 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: admin-email
+    receivers:
+      - uid: admin-email-receiver
+        type: email
+        settings:
+          # Plain ${VAR} — confirmed working via `strings` on the grafana
+          # binary (finds os.ExpandEnv) and by actually restarting the
+          # container and watching this resolve correctly. $__env{} is NOT
+          # real for this Grafana version — that was a wrong assumption in
+          # an earlier pass, caught by testing rather than trusting docs
+          # recollection.
+          addresses: ${ADMIN_EMAIL}
+          singleEmail: true

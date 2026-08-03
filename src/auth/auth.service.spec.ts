@@ -20,8 +20,8 @@ describe('AuthService', () => {
   beforeEach(async () => {
     userRepository = {
       findByEmail: jest.fn(),
-      create: jest.fn((dto) => dto),
-      save: jest.fn(async (entity) => ({ id: 'user-1', ...entity })),
+      create: jest.fn((dto: object) => dto),
+      save: jest.fn((entity: object) => ({ id: 'user-1', ...entity })),
     };
     jwtService = {
       sign: jest.fn().mockReturnValue('signed-token'),

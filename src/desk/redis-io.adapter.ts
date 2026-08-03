@@ -1,7 +1,7 @@
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
-import { ServerOptions } from 'socket.io';
+import { Server, ServerOptions } from 'socket.io';
 
 export class RedisIoAdapter extends IoAdapter {
   private adapterConstructor?: ReturnType<typeof createAdapter>;
@@ -15,8 +15,11 @@ export class RedisIoAdapter extends IoAdapter {
     this.adapterConstructor = createAdapter(pubClient, subClient);
   }
 
-  createIOServer(port: number, options?: ServerOptions) {
-    const server = super.createIOServer(port, options);
+  // Base IoAdapter.createIOServer is untyped (returns `any`) since it has to
+  // support multiple websocket library adapters generically — this subclass
+  // only ever runs with socket.io, so it's safe to assert the concrete type.
+  createIOServer(port: number, options?: ServerOptions): Server {
+    const server = super.createIOServer(port, options) as Server;
     if (this.adapterConstructor) {
       server.adapter(this.adapterConstructor);
     }

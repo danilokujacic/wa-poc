@@ -7,6 +7,7 @@ import { WhatsappSendError } from 'src/bullmq/messages/message-sender.interface'
 import { ResortContextService } from 'src/resort/resort-context.service';
 import { DESK_EVENTS } from 'src/desk/desk.events';
 import type { MessageReceivedEvent } from 'src/desk/desk.events';
+import type { WhatsappWebhookPayload } from './interfaces/whatsapp-webhook-payload.interface';
 
 const GRAPH_API = 'https://graph.facebook.com/v21.0';
 
@@ -33,7 +34,7 @@ export class WhatsappService {
     return null;
   }
 
-  async processIncoming(body: any): Promise<void> {
+  async processIncoming(body: WhatsappWebhookPayload): Promise<void> {
     this.logger.info(
       `Received webhook event with time ${this.toResortLocalTime(body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.timestamp)}`,
     );
@@ -44,6 +45,8 @@ export class WhatsappService {
     if (!message) return;
 
     const phoneNumberId = value.metadata?.phone_number_id;
+    if (!phoneNumberId) return;
+
     const guestNumber = message.from; // guest's WhatsApp number
     const guestName = value.contacts?.[0]?.profile?.name ?? 'Guest';
     // WhatsApp's own message id (wamid) — the correlation id for this message's whole
@@ -70,11 +73,15 @@ export class WhatsappService {
     // employee message content must never reach the log pipeline (and therefore Grafana).
     this.logger.info({ traceId, conversationKey }, 'Received guest message');
 
+    // Non-null: WhatsApp only sends a `text` object when `type === 'text'`,
+    // already checked above.
+    const textBody = message.text!.body;
+
     await this.recordInboundMessageForDesk(
       conversationKey,
       phoneNumberId,
       guestNumber,
-      message.text.body,
+      textBody,
       message.timestamp,
       traceId,
     );
@@ -89,7 +96,7 @@ export class WhatsappService {
         },
         {
           id: message.id,
-          text: message.text.body,
+          text: textBody,
           timestamp: Number(message.timestamp),
         },
       );

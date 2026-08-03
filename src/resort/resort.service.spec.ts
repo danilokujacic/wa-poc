@@ -17,15 +17,15 @@ describe('ResortService', () => {
 
   beforeEach(async () => {
     repository = {
-      create: jest.fn((dto) => dto),
-      save: jest.fn(async (entity) => entity),
+      create: jest.fn((dto: object) => dto),
+      save: jest.fn((entity: object) => entity),
       find: jest.fn(),
       findOneBy: jest.fn(),
       remove: jest.fn(),
     };
     userRepository = {
       findOne: jest.fn(),
-      save: jest.fn(async (entity) => entity),
+      save: jest.fn((entity: object) => entity),
     };
 
     const module: TestingModule = await Test.createTestingModule({

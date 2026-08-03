@@ -15,7 +15,6 @@ import {
 } from '../entity/reservation.entity';
 import { ResortFeature } from '../entity/resort-feature.entity';
 import {
-  FindOperator,
   FindOptionsWhere,
   ILike,
   LessThanOrEqual,

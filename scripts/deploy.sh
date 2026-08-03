@@ -15,11 +15,23 @@ cd "$REPO_DIR"
 # EC2 host's .env to have it, so this script is correct on its own.
 export COMPOSE_PROFILES=production
 
+# Every image built by this script is tagged with the exact commit it came
+# from — not just "latest" — so a running container's image name is a
+# direct pointer back to its source (`git show <tag>`), and rollback is
+# "redeploy the image tagged with the previous SHA", not "hope you kept a
+# copy." docker-compose.yml's `image:` field reads this same var.
+export IMAGE_TAG="$(git rev-parse --short HEAD)"
+echo "==> Building image tagged wa-poc-app:${IMAGE_TAG}"
+
 echo "==> Starting infra services (postgres, redis, loki, grafana, maildev, proxy)"
 docker compose up -d postgres redis loki grafana maildev proxy
 
 echo "==> Building app image"
 docker compose build app
+# Also tag as :latest, purely for convenience (manual `docker run
+# wa-poc-app:latest` debugging) — the SHA tag above remains the durable
+# record; this is just a floating pointer to "whatever's newest."
+docker tag "wa-poc-app:${IMAGE_TAG}" wa-poc-app:latest
 
 echo "==> Running migrations"
 docker compose run --rm app node ./node_modules/typeorm/cli.js -d dist/data-source.js migration:run
@@ -87,6 +99,21 @@ fi
 
 echo "==> Pruning dangling images"
 docker image prune -f
+
+# SHA-tagged images aren't "dangling" (they're named), so the prune above
+# never touches them — without this they'd accumulate forever, one per
+# deploy. Keeps the most recent 5 (a small rollback window) and removes the
+# rest; best-effort per image so an in-use one (Docker refuses to remove
+# it) doesn't abort the script.
+echo "==> Pruning old wa-poc-app image tags (keeping the 5 most recent)"
+docker images 'wa-poc-app' --format '{{.Tag}} {{.CreatedAt}}' \
+    | grep -v '^latest ' \
+    | sort -k2 -r \
+    | tail -n +6 \
+    | awk '{print $1}' \
+    | while read -r old_tag; do
+        docker rmi "wa-poc-app:${old_tag}" >/dev/null 2>&1 || true
+    done
 
 echo "==> Deploy finished"
 docker compose ps

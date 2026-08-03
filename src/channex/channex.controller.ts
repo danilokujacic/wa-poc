@@ -39,9 +39,10 @@ export class ChannexController {
     // ack fast so Channex doesn't retry the callback itself.
     this.channexBookingSyncService
       .applyAndAckRevision(revisionId)
-      .catch((err) => {
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
         this.logger.error(
-          `Failed to process Channex revision ${revisionId}: ${err.message}`,
+          `Failed to process Channex revision ${revisionId}: ${message}`,
         );
       });
 

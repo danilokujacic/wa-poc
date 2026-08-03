@@ -48,9 +48,6 @@ const OVERWHELMED_MESSAGE =
 const SERVICE_UNAVAILABLE =
   "We're experiencing high demand right now and couldn't process your message. Please try again in a few minutes.";
 
-const RESERVATION_CONFLICT_MESSAGE =
-  "We're unable to process your reservation at this time due to a conflict. Please try again later.";
-
 interface ReservationIntent {
   feature: string;
   start: string;

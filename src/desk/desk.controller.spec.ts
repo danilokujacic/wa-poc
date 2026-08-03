@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
+import type { Request } from 'express';
 import { DeskController } from './desk.controller';
 import { DeskService } from './desk.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -7,6 +8,7 @@ import { ResortMemberGuard } from '../resort/guards/resort-member.guard';
 import { DeskThrottlerGuard } from './guards/desk-throttler.guard';
 import { ConversationStatus } from '../entity/conversation.entity';
 import { MessageSenderType } from '../entity/message.entity';
+import type { JwtPayload } from '../auth/jwt-payload.interface';
 
 describe('DeskController', () => {
   let controller: DeskController;
@@ -42,7 +44,7 @@ describe('DeskController', () => {
       role: 'Employee',
       resortId: 'resort-1',
     },
-  } as any;
+  } as unknown as Request & { user: JwtPayload };
 
   beforeEach(async () => {
     service = {

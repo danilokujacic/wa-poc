@@ -1,7 +1,11 @@
+import type { Job } from 'bullmq';
 import { UnrecoverableError } from 'bullmq';
 import { WaSendProcessor } from './wa-send.processor';
 import { MessageDeliveryStatus } from '../../entity/message.entity';
 import { WhatsappSendError } from '../messages/message-sender.interface';
+import type { WaSendJobData } from './wa-send.producer';
+
+type MockWaSendJob = Job<WaSendJobData>;
 
 const mockLogger = {
   trace: jest.fn(),
@@ -28,7 +32,7 @@ describe('WaSendProcessor', () => {
       traceId: 'message-1',
     },
     attemptsMade: 0,
-  } as any;
+  } as unknown as MockWaSendJob;
 
   it('sends via WhatsApp, marks the message Sent, and broadcasts the status update', async () => {
     const mockSendText = jest.fn().mockResolvedValue(undefined);
@@ -69,7 +73,9 @@ describe('WaSendProcessor', () => {
       mockLogger as any,
     );
 
-    const error = await processor.process(job).catch((e) => e);
+    const error = (await processor
+      .process(job)
+      .catch((e: unknown) => e)) as Error;
     expect(error.message).toContain('Service Unavailable');
     expect(error).not.toBeInstanceOf(UnrecoverableError);
   });
@@ -85,7 +91,9 @@ describe('WaSendProcessor', () => {
       mockLogger as any,
     );
 
-    const error = await processor.process(job).catch((e) => e);
+    const error = (await processor
+      .process(job)
+      .catch((e: unknown) => e)) as Error;
     expect(error).not.toBeInstanceOf(UnrecoverableError);
   });
 
@@ -98,7 +106,9 @@ describe('WaSendProcessor', () => {
       mockLogger as any,
     );
 
-    const error = await processor.process(job).catch((e) => e);
+    const error = (await processor
+      .process(job)
+      .catch((e: unknown) => e)) as Error;
     expect(error.message).toContain('fetch failed');
     expect(error).not.toBeInstanceOf(UnrecoverableError);
   });
@@ -128,7 +138,11 @@ describe('WaSendProcessor', () => {
       { emitMessageStatusUpdated: mockEmit } as any,
       mockLogger as any,
     );
-    const failedJob = { ...job, attemptsMade: 3, opts: { attempts: 3 } };
+    const failedJob = {
+      ...job,
+      attemptsMade: 3,
+      opts: { attempts: 3 },
+    } as unknown as MockWaSendJob;
 
     await processor.onFailed(
       failedJob,
@@ -159,7 +173,11 @@ describe('WaSendProcessor', () => {
       mockLogger as any,
     );
     // Only 1 of the configured 3 attempts happened — UnrecoverableError short-circuits the rest.
-    const failFastJob = { ...job, attemptsMade: 1, opts: { attempts: 3 } };
+    const failFastJob = {
+      ...job,
+      attemptsMade: 1,
+      opts: { attempts: 3 },
+    } as unknown as MockWaSendJob;
 
     await processor.onFailed(
       failFastJob,
@@ -184,7 +202,11 @@ describe('WaSendProcessor', () => {
       { emitMessageStatusUpdated: jest.fn() } as any,
       mockLogger as any,
     );
-    const retryingJob = { ...job, attemptsMade: 1, opts: { attempts: 3 } };
+    const retryingJob = {
+      ...job,
+      attemptsMade: 1,
+      opts: { attempts: 3 },
+    } as unknown as MockWaSendJob;
 
     await processor.onFailed(
       retryingJob,

@@ -26,17 +26,19 @@ describe('ResortFeatureService', () => {
 
   beforeEach(async () => {
     manager = {
-      create: jest.fn((_entityClass, dto) => dto),
-      save: jest.fn(async (entity) => entity),
+      create: jest.fn((_entityClass: unknown, dto: object) => dto),
+      save: jest.fn((entity: object) => entity),
       findOne: jest.fn(),
     };
     repository = {
-      save: jest.fn(async (entity) => entity),
+      save: jest.fn((entity: object) => entity),
       find: jest.fn(),
       findOne: jest.fn(),
       remove: jest.fn(),
       manager: {
-        transaction: jest.fn(async (cb) => cb(manager)),
+        transaction: jest.fn((cb: (m: typeof manager) => unknown) =>
+          cb(manager),
+        ),
       },
     };
     reservationRepository = {
@@ -105,7 +107,7 @@ describe('ResortFeatureService', () => {
       channexPropertyId: 'channex-property-1',
     });
     channexContentSyncService.syncFeatureContent.mockImplementation(
-      async (_resort: unknown, feature: ResortFeature) => {
+      (_resort: unknown, feature: ResortFeature) => {
         feature.channexRoomTypeId = 'channex-room-type-1';
         feature.channexRatePlanId = 'channex-rate-plan-1';
       },

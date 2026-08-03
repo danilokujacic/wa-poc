@@ -21,8 +21,8 @@ describe('ResortUserService', () => {
 
   beforeEach(async () => {
     userRepository = {
-      create: jest.fn((dto) => dto),
-      save: jest.fn(async (entity) => ({ id: 'user-1', ...entity })),
+      create: jest.fn((dto: object) => dto),
+      save: jest.fn((entity: object) => ({ id: 'user-1', ...entity })),
       find: jest.fn(),
       findOne: jest.fn(),
       findByEmail: jest.fn(),

@@ -1,5 +1,9 @@
+import type { Job } from 'bullmq';
 import { DeskMessageProcessor } from './desk-messages.processor';
 import { MessageSenderType } from '../../entity/message.entity';
+import type { RecordMessageParams } from '../../desk/desk.service';
+
+type MockJob = Job<RecordMessageParams>;
 
 const mockLogger = {
   trace: jest.fn(),
@@ -25,7 +29,7 @@ describe('DeskMessageProcessor', () => {
       traceId: 'wamid.123',
     },
     attemptsMade: 0,
-  } as any;
+  } as unknown as MockJob;
 
   it('persists the message via DeskService', async () => {
     const mockRecordMessage = jest.fn().mockResolvedValue({ id: 'message-1' });
@@ -54,7 +58,11 @@ describe('DeskMessageProcessor', () => {
       { recordMessage: jest.fn() } as any,
       mockLogger as any,
     );
-    const failedJob = { ...job, attemptsMade: 36, opts: { attempts: 36 } };
+    const failedJob = {
+      ...job,
+      attemptsMade: 36,
+      opts: { attempts: 36 },
+    } as unknown as MockJob;
 
     processor.onFailed(failedJob, new Error('DB down'));
 
@@ -69,7 +77,11 @@ describe('DeskMessageProcessor', () => {
       { recordMessage: jest.fn() } as any,
       mockLogger as any,
     );
-    const retryingJob = { ...job, attemptsMade: 2, opts: { attempts: 36 } };
+    const retryingJob = {
+      ...job,
+      attemptsMade: 2,
+      opts: { attempts: 36 },
+    } as unknown as MockJob;
 
     processor.onFailed(retryingJob, new Error('DB down'));
 

@@ -16,8 +16,8 @@ describe('HealthController', () => {
 
   beforeEach(async () => {
     health = {
-      check: jest.fn((indicators) =>
-        Promise.all(indicators.map((fn: () => unknown) => fn())),
+      check: jest.fn((indicators: Array<() => unknown>) =>
+        Promise.all(indicators.map((fn) => fn())),
       ),
     };
     db = {
@@ -26,8 +26,10 @@ describe('HealthController', () => {
     redis = { ping: jest.fn().mockResolvedValue('PONG') };
     healthIndicatorService = {
       check: jest.fn(() => ({
-        up: jest.fn((data) => ({ redis: { status: 'up', ...data } })),
-        down: jest.fn((data) => ({ redis: { status: 'down', ...data } })),
+        up: jest.fn((data?: object) => ({ redis: { status: 'up', ...data } })),
+        down: jest.fn((data?: object) => ({
+          redis: { status: 'down', ...data },
+        })),
       })),
     };
 

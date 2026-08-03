@@ -60,3 +60,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Internal notes / handoff docs (progress logs, frontend integration specs, etc.)
 # — never pushed publicly.
 /docs
+
+# Local Postgres dumps (scripts/backup-db.sh) — real data, never committed.
+/backups

@@ -1,0 +1,61 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: wa-poc-alerts
+    folder: wa-poc
+    interval: 1m
+    rules:
+      - uid: wa-poc-high-error-rate
+        title: High error rate
+        condition: C
+        # Three-step pipeline, standard for Grafana unified alerting:
+        # A = raw Loki query, B = reduce A to a single number, C = threshold on B.
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              refId: A
+              queryType: range
+              # pino ships structured JSON to Loki (not the pretty-printed
+              # console text) — level 50 is pino's numeric "error" level,
+              # 60 is "fatal". Text-matching for the word "ERROR" would not
+              # match this JSON.
+              expr: 'count_over_time({service="wa-poc"} | json | level >= 50 [5m])'
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    # Tune once you have a real production baseline — this
+                    # is a starting point, not a calibrated number.
+                    params: [5]
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'wa-poc logged more than 5 errors in the last 5 minutes.'

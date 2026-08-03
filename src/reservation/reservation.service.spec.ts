@@ -31,8 +31,8 @@ describe('ReservationService', () => {
 
   beforeEach(async () => {
     reservationRepository = {
-      create: jest.fn((dto) => dto),
-      save: jest.fn(async (entity) => entity),
+      create: jest.fn((dto: object) => dto),
+      save: jest.fn((entity: object) => entity),
       find: jest.fn(),
       findOne: jest.fn(),
       remove: jest.fn(),
@@ -170,6 +170,7 @@ describe('ReservationService', () => {
     expect(reservationRepository.find).toHaveBeenCalledWith({
       where: {
         feature: { resort: { id: 'resort-1' } },
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.objectContaining() is typed `any` by @types/jest
         startDate: expect.objectContaining({
           _type: 'moreThanOrEqual',
         }),
@@ -234,8 +235,10 @@ describe('ReservationService', () => {
     };
     reservationRepository.find.mockResolvedValue([overbooked, fine]);
     reservationRepository.findActiveOverlapping.mockImplementation(
-      async (featureId: string) =>
-        featureId === 'feature-1' ? [overbooked, { id: '3' }] : [fine],
+      (featureId: string) =>
+        Promise.resolve(
+          featureId === 'feature-1' ? [overbooked, { id: '3' }] : [fine],
+        ),
     );
 
     const result = await service.findAll('resort-1', { overbooked: 'true' });
@@ -341,6 +344,7 @@ describe('ReservationService', () => {
     expect(channexAriProducer.enqueueAvailabilityPush).toHaveBeenCalledWith(
       'feature-1',
     );
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment -- expect.objectContaining()/stringContaining() are typed `any` by @types/jest */
     expect(eventEmitter.emit).toHaveBeenCalledWith(
       DESK_EVENTS.RESERVATION_STATUS_MESSAGE,
       expect.objectContaining({
@@ -349,6 +353,7 @@ describe('ReservationService', () => {
         body: expect.stringContaining('confirmed'),
       }),
     );
+    /* eslint-enable @typescript-eslint/no-unsafe-assignment */
   });
 
   it('notifies the guest by WhatsApp when staff declines an already-accepted reservation (e.g. an OTA collision)', async () => {
@@ -368,10 +373,12 @@ describe('ReservationService', () => {
     );
 
     expect(result.status).toBe(ReservationStatus.DECLINED);
+    /* eslint-disable @typescript-eslint/no-unsafe-assignment -- expect.objectContaining()/stringContaining() are typed `any` by @types/jest */
     expect(eventEmitter.emit).toHaveBeenCalledWith(
       DESK_EVENTS.RESERVATION_STATUS_MESSAGE,
       expect.objectContaining({ body: expect.stringContaining('declined') }),
     );
+    /* eslint-enable @typescript-eslint/no-unsafe-assignment */
   });
 
   it('does not notify the guest for a Channex-sourced reservation', async () => {
