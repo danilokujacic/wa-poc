@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
 import { ReservationRepository } from '../repository/reservation.repository';
@@ -6,8 +11,11 @@ import { ResortFeature } from '../entity/resort-feature.entity';
 import { Resort } from '../entity/resort.entity';
 import { ChannexContentSyncService } from '../channex/channex-content-sync.service';
 import { ChannexAriProducer } from '../bullmq/channex-ari/channex-ari.producer';
+import { StorageService } from '../storage/storage.service';
 import { CreateResortFeatureDto } from './dto/create-resort-feature.dto';
 import { UpdateResortFeatureDto } from './dto/update-resort-feature.dto';
+
+const IMAGE_FOLDER = 'resort-feature-images';
 
 @Injectable()
 export class ResortFeatureService {
@@ -18,6 +26,7 @@ export class ResortFeatureService {
     private readonly reservationRepository: ReservationRepository,
     private readonly channexContentSyncService: ChannexContentSyncService,
     private readonly channexAriProducer: ChannexAriProducer,
+    private readonly storageService: StorageService,
   ) {}
 
   // Runs the local write and the Channex push in one DB transaction: if the
@@ -121,6 +130,43 @@ export class ResortFeatureService {
 
       return feature;
     });
+  }
+
+  // Uploads each file to object storage (see StorageService — S3-compatible,
+  // provider-agnostic) and appends the resulting public URLs to the
+  // feature's existing images. Never trusts the client for anything beyond
+  // the file bytes/mimetype/original extension — the object key itself is
+  // always a fresh random UUID (see StorageService.uploadFile).
+  async addImages(
+    resortId: string,
+    id: string,
+    files: Express.Multer.File[],
+  ): Promise<ResortFeature> {
+    if (files.length === 0) {
+      throw new BadRequestException('No files provided');
+    }
+    const invalid = files.find((file) => !file.mimetype.startsWith('image/'));
+    if (invalid) {
+      throw new BadRequestException(
+        `${invalid.originalname} is not an image (${invalid.mimetype})`,
+      );
+    }
+
+    const feature = await this.findOne(resortId, id);
+
+    const uploadedUrls = await Promise.all(
+      files.map((file) =>
+        this.storageService.uploadFile(
+          IMAGE_FOLDER,
+          file.originalname,
+          file.buffer,
+          file.mimetype,
+        ),
+      ),
+    );
+
+    feature.images = [...(feature.images ?? []), ...uploadedUrls];
+    return this.resortFeatureRepository.save(feature);
   }
 
   async remove(resortId: string, id: string): Promise<void> {

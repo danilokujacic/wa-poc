@@ -5,6 +5,7 @@ import { ResortFeatureRepository } from '../repository/resort-feature.repository
 import { ReservationRepository } from '../repository/reservation.repository';
 import { ChannexContentSyncService } from '../channex/channex-content-sync.service';
 import { ChannexAriProducer } from '../bullmq/channex-ari/channex-ari.producer';
+import { StorageService } from '../storage/storage.service';
 import { ResortFeature } from '../entity/resort-feature.entity';
 
 describe('ResortFeatureService', () => {
@@ -23,6 +24,7 @@ describe('ResortFeatureService', () => {
     enqueueAvailabilityPush: jest.Mock;
     enqueueRestrictionsPush: jest.Mock;
   };
+  let storageService: { uploadFile: jest.Mock };
 
   beforeEach(async () => {
     manager = {
@@ -51,6 +53,11 @@ describe('ResortFeatureService', () => {
       enqueueAvailabilityPush: jest.fn(),
       enqueueRestrictionsPush: jest.fn(),
     };
+    storageService = {
+      uploadFile: jest
+        .fn()
+        .mockResolvedValue('https://images.example.com/x.jpg'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,6 +69,7 @@ describe('ResortFeatureService', () => {
           useValue: channexContentSyncService,
         },
         { provide: ChannexAriProducer, useValue: channexAriProducer },
+        { provide: StorageService, useValue: storageService },
       ],
     }).compile();
 
@@ -267,5 +275,73 @@ describe('ResortFeatureService', () => {
     await service.remove('resort-1', '1');
 
     expect(channexAriProducer.enqueueAvailabilityPush).not.toHaveBeenCalled();
+  });
+
+  describe('addImages', () => {
+    const file = (overrides: Partial<Express.Multer.File> = {}) =>
+      ({
+        originalname: 'cabana.jpg',
+        mimetype: 'image/jpeg',
+        buffer: Buffer.from('fake'),
+        ...overrides,
+      }) as Express.Multer.File;
+
+    it('uploads each file and appends the resulting URLs to the feature', async () => {
+      const feature = {
+        id: '1',
+        images: ['https://images.example.com/old.jpg'],
+      };
+      repository.findOne.mockResolvedValue(feature);
+      storageService.uploadFile
+        .mockResolvedValueOnce('https://images.example.com/new1.jpg')
+        .mockResolvedValueOnce('https://images.example.com/new2.jpg');
+
+      const result = await service.addImages('resort-1', '1', [
+        file({ originalname: 'a.jpg' }),
+        file({ originalname: 'b.png', mimetype: 'image/png' }),
+      ]);
+
+      expect(storageService.uploadFile).toHaveBeenCalledTimes(2);
+      expect(result.images).toEqual([
+        'https://images.example.com/old.jpg',
+        'https://images.example.com/new1.jpg',
+        'https://images.example.com/new2.jpg',
+      ]);
+      expect(repository.save).toHaveBeenCalledWith(result);
+    });
+
+    it('starts a fresh images array when the feature had none yet', async () => {
+      repository.findOne.mockResolvedValue({ id: '1', images: null });
+
+      const result = await service.addImages('resort-1', '1', [file()]);
+
+      expect(result.images).toEqual(['https://images.example.com/x.jpg']);
+    });
+
+    it('rejects when no files are provided', async () => {
+      await expect(service.addImages('resort-1', '1', [])).rejects.toThrow(
+        'No files provided',
+      );
+      expect(repository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-image file without uploading anything', async () => {
+      repository.findOne.mockResolvedValue({ id: '1', images: [] });
+
+      await expect(
+        service.addImages('resort-1', '1', [
+          file({ originalname: 'doc.pdf', mimetype: 'application/pdf' }),
+        ]),
+      ).rejects.toThrow('is not an image');
+      expect(storageService.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('throws when the feature does not exist for that resort', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.addImages('resort-1', 'missing', [file()]),
+      ).rejects.toThrow(NotFoundException);
+    });
   });
 });

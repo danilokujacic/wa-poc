@@ -7,11 +7,15 @@ import {
   Patch,
   Post,
   UseGuards,
+  UseInterceptors,
   UsePipes,
+  UploadedFiles,
   ValidationPipe,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiTags,
@@ -98,6 +102,33 @@ export class ResortFeatureController {
     @Body() dto: UpdateResortFeatureDto,
   ) {
     const feature = await this.resortFeatureService.update(resortId, id, dto);
+    return ResortFeatureResponseDto.fromEntity(feature);
+  }
+
+  @Post(':id/images')
+  @UseGuards(ResortOwnerGuard)
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB/file
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary:
+      "Upload images for one of a resort's features — only its owner may do this",
+  })
+  @ApiParam({ name: 'resortId', type: String })
+  @ApiParam({ name: 'id', type: String })
+  async uploadImages(
+    @Param('resortId') resortId: string,
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    const feature = await this.resortFeatureService.addImages(
+      resortId,
+      id,
+      files,
+    );
     return ResortFeatureResponseDto.fromEntity(feature);
   }
 

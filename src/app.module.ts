@@ -126,6 +126,16 @@ import appConfig from './config/app.config';
         username: config.get('DB_USER', 'postgres'),
         password: config.get('DB_PASS', 'postgres'),
         database: config.get('DB_NAME', 'wa_poc'),
+        // Neon (and most managed Postgres) requires SSL; local/self-hosted
+        // Postgres in docker-compose doesn't have it configured at all, so
+        // this must be opt-in via env var, not always-on. rejectUnauthorized:
+        // false because Neon's cert chain isn't in Node's default trust
+        // store by default — this still encrypts the connection, it just
+        // doesn't verify the server certificate against a CA.
+        ssl:
+          config.get('DB_SSL', 'false') === 'true'
+            ? { rejectUnauthorized: false }
+            : false,
         entities: [join(__dirname, '**/entity/*.entity{.ts,.js}')],
         synchronize: process.env.NODE_ENV === 'development', // DEV ONLY — auto-creates tables from entities
       }),

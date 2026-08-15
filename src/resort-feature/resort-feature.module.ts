@@ -11,6 +11,7 @@ import { ResortOwnerGuard } from '../resort/guards/resort-owner.guard';
 import { AuthModule } from '../auth/auth.module';
 import { ChannexModule } from '../channex/channex.module';
 import { ChannexAriModule } from '../channex/channex-ari.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ChannexAriModule } from '../channex/channex-ari.module';
     AuthModule,
     ChannexModule,
     ChannexAriModule,
+    StorageModule,
   ],
   providers: [
     ResortFeatureRepository,

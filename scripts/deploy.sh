@@ -23,8 +23,12 @@ export COMPOSE_PROFILES=production
 export IMAGE_TAG="$(git rev-parse --short HEAD)"
 echo "==> Building image tagged wa-poc-app:${IMAGE_TAG}"
 
-echo "==> Starting infra services (postgres, redis, loki, grafana, maildev, proxy)"
-docker compose up -d postgres redis loki grafana maildev proxy
+# No `postgres` here — Postgres is Neon (managed, off-VPS) in production
+# now, not a local container. `.env` on this host must point DB_HOST/DB_SSL
+# etc. at the real Neon connection string. The `postgres` service still
+# exists in docker-compose.yml purely for local dev.
+echo "==> Starting infra services (redis, loki, grafana, maildev, proxy)"
+docker compose up -d redis loki grafana maildev proxy
 
 echo "==> Building app image"
 docker compose build app

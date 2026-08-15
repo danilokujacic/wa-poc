@@ -13,6 +13,7 @@ describe('ResortFeatureController', () => {
     findOne: jest.Mock;
     update: jest.Mock;
     remove: jest.Mock;
+    addImages: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -22,6 +23,7 @@ describe('ResortFeatureController', () => {
       findOne: jest.fn(),
       update: jest.fn(),
       remove: jest.fn(),
+      addImages: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -100,5 +102,31 @@ describe('ResortFeatureController', () => {
   it('delegates remove to the service', async () => {
     await controller.remove('resort-1', 'feature-1');
     expect(service.remove).toHaveBeenCalledWith('resort-1', 'feature-1');
+  });
+
+  it('delegates image upload to the service', async () => {
+    const files = [
+      {
+        originalname: 'a.jpg',
+        mimetype: 'image/jpeg',
+        buffer: Buffer.from('x'),
+      },
+    ] as Express.Multer.File[];
+    service.addImages.mockResolvedValue({
+      id: 'feature-1',
+      name: 'Cabana',
+      price: 49.99,
+      quantity: 5,
+      capacity: 2,
+      images: ['https://images.example.com/a.jpg'],
+    });
+
+    await controller.uploadImages('resort-1', 'feature-1', files);
+
+    expect(service.addImages).toHaveBeenCalledWith(
+      'resort-1',
+      'feature-1',
+      files,
+    );
   });
 });

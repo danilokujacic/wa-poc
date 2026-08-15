@@ -1,4 +1,4 @@
-name: Deploy to EC2
+name: Deploy
 
 on:
   push:
@@ -44,16 +44,22 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
+      # Renamed from EC2_* — this now targets a Hetzner VPS, not AWS EC2.
+      # The SSH mechanism itself doesn't care what's on the other end, so no
+      # other change was needed here beyond the secret names. You need to
+      # add these secret names (DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY,
+      # DEPLOY_SSH_PORT, DEPLOY_APP_DIR) in this repo's GitHub Settings →
+      # Secrets → Actions — I can't create or read repo secrets myself.
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_SSH_PORT || 22 }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
           script_stop: true
           script: |
-            cd ${{ secrets.EC2_APP_DIR }}
+            cd ${{ secrets.DEPLOY_APP_DIR }}
             git fetch origin main
             git reset --hard origin/main
             ./scripts/deploy.sh

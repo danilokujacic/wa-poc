@@ -94,6 +94,15 @@ services:
       - maildev
 
   app:
+    # Behind the same profile as loki/grafana: local dev runs the app bare
+    # (`pnpm start:dev`) against just postgres/redis/maildev, so this
+    # doesn't need to exist for `docker compose up -d postgres redis
+    # maildev` to work — previously it did, via a hard `depends_on: loki`,
+    # which meant that command failed validation entirely unless
+    # COMPOSE_PROFILES=production was set, even though app wasn't being
+    # started. deploy.sh already sets that var itself, so production
+    # deploys are unaffected.
+    profiles: ['production']
     build:
       context: .
       dockerfile: Dockerfile
@@ -107,8 +116,12 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
+      # DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME/DB_SSL deliberately NOT
+      # overridden here — they come from `.env` (env_file above) and must
+      # point at the real Neon connection string's pieces in production.
+      # REDIS_HOST/REDIS_PORT ARE overridden: Redis is still self-hosted on
+      # this VPS via the `redis` service below, so "redis" (the compose
+      # service name) is always correct regardless of what .env says.
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOKI_HOST: http://loki:3100
@@ -134,15 +147,23 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    # No `postgres` dependency here on purpose — Postgres is now Neon
+    # (managed, off-VPS), not the local `postgres` service below. That
+    # service still exists for local dev (`docker compose up -d postgres
+    # redis maildev` + `pnpm start:dev`), but `depends_on` would have
+    # auto-started it as a side effect of starting `app` even when it's not
+    # named explicitly — Compose starts anything a service `depends_on`
+    # regardless of what's listed on the command line. Point `DB_HOST` /
+    # `DB_SSL=true` at the real Neon connection in `.env` for production.
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       loki:
         condition: service_started
 
   proxy:
+    # Only meaningful alongside `app` (see the note there) — same profile.
+    profiles: ['production']
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
