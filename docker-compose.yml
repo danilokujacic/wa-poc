@@ -1,5 +1,12 @@
 services:
   postgres:
+    # Local dev only — production uses Neon (see app_blue/app_green's env_file
+    # .env, DB_HOST/DB_SSL point at Neon there). Gated behind its own profile
+    # so a bare `docker compose up -d` on the production host (no explicit
+    # service names) can never start it by accident — deploy.sh never does
+    # that (it always names services explicitly), but a human running compose
+    # commands by hand on the VPS might.
+    profiles: ['local']
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -57,34 +64,12 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: 'false'
-      # Deliberately NOT ${SMTP_HOST} — .env's SMTP_HOST is "localhost",
-      # meant for the app running bare (`pnpm start:dev`) outside Docker.
-      # From inside a container, "localhost" means that container itself,
-      # not the host or a sibling container — confirmed by actually hitting
-      # this exact failure ("dial tcp [::1]:1025: connect: connection
-      # refused") before adding the dedicated GRAFANA_SMTP_* vars below.
-      # (The app's own SMTP_HOST has this identical latent bug when it runs
-      # containerized — out of scope to fix here, flagging it since this is
-      # concrete proof it's real, not theoretical.) Defaults to maildev,
-      # reachable by that compose service name; override
-      # GRAFANA_SMTP_HOST/PORT in .env for a real relay in production.
       GF_SMTP_ENABLED: 'true'
       GF_SMTP_HOST: '${GRAFANA_SMTP_HOST:-maildev}:${GRAFANA_SMTP_PORT:-1025}'
       GF_SMTP_USER: ${SMTP_USER:-}
       GF_SMTP_PASSWORD: ${SMTP_PASS:-}
       GF_SMTP_SKIP_VERIFY: 'true'
-      # NOT ${SMTP_FROM} — the app's own SMTP_FROM is "Name <email>" format
-      # (valid for nodemailer's "from" field), but Grafana's
-      # GF_SMTP_FROM_ADDRESS requires a bare address only and fails to
-      # start ("invalid email address for SMTP from_address config") if
-      # given the display-name-wrapped form. Confirmed by actually hitting
-      # that crash and fixing it, not assumed.
       GF_SMTP_FROM_ADDRESS: grafana-alerts@wa-poc.local
-      # Read by the ${ADMIN_EMAIL} expansion (Go's os.ExpandEnv, confirmed
-      # via `strings` on the grafana binary — NOT the $__env{} macro
-      # syntax, which doesn't exist in this Grafana version despite
-      # appearing in some Grafana docs/blog posts for other contexts) in
-      # infra/grafana/provisioning/alerting/contact-points.yaml.
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -93,48 +78,24 @@ services:
       - loki
       - maildev
 
-  app:
-    # Behind the same profile as loki/grafana: local dev runs the app bare
-    # (`pnpm start:dev`) against just postgres/redis/maildev, so this
-    # doesn't need to exist for `docker compose up -d postgres redis
-    # maildev` to work — previously it did, via a hard `depends_on: loki`,
-    # which meant that command failed validation entirely unless
-    # COMPOSE_PROFILES=production was set, even though app wasn't being
-    # started. deploy.sh already sets that var itself, so production
-    # deploys are unaffected.
+  app_blue: &app_base
     profiles: ['production']
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # IMAGE_TAG defaults to "latest" for plain ad-hoc `docker compose build`
-    # runs, but deploy.sh always sets it to the git short SHA before
-    # building — so a running container's image name is a direct pointer
-    # back to the exact commit it's running, and rollback is "redeploy the
-    # image tagged with the previous SHA" instead of "hope you kept a copy."
-    image: wa-poc-app:${IMAGE_TAG:-latest}
+    image: node:22-alpine
+    working_dir: /releases/${RELEASE_SHA:-current}
+    command: node dist/main.js
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      # DB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME/DB_SSL deliberately NOT
-      # overridden here — they come from `.env` (env_file above) and must
-      # point at the real Neon connection string's pieces in production.
-      # REDIS_HOST/REDIS_PORT ARE overridden: Redis is still self-hosted on
-      # this VPS via the `redis` service below, so "redis" (the compose
-      # service name) is always correct regardless of what .env says.
       REDIS_HOST: redis
       REDIS_PORT: 6379
       LOKI_HOST: http://loki:3100
       NODE_ENV: production
-    # No host port published here on purpose: --scale app=2 (see deploy.sh)
-    # runs two containers of this service at once during a cutover, and two
-    # containers can't both bind the same host port. `proxy` is what's
-    # actually reachable from outside; it load-balances across whatever
-    # `app` replicas are currently running, resolved fresh per-request via
-    # Docker's internal DNS (see Caddyfile) so a freshly started replica is
-    # picked up without a proxy restart.
-    expose:
-      - '3002'
+      RELEASE_SHA: ${RELEASE_SHA:-current}
+    volumes:
+      - ${RELEASES_DIR:-./releases}:/releases:ro
+    ports:
+      - '${APP_PORT_BLUE:-3002}:3002'
     healthcheck:
       test:
         [
@@ -147,32 +108,16 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    # No `postgres` dependency here on purpose — Postgres is now Neon
-    # (managed, off-VPS), not the local `postgres` service below. That
-    # service still exists for local dev (`docker compose up -d postgres
-    # redis maildev` + `pnpm start:dev`), but `depends_on` would have
-    # auto-started it as a side effect of starting `app` even when it's not
-    # named explicitly — Compose starts anything a service `depends_on`
-    # regardless of what's listed on the command line. Point `DB_HOST` /
-    # `DB_SSL=true` at the real Neon connection in `.env` for production.
     depends_on:
       redis:
         condition: service_healthy
       loki:
         condition: service_started
 
-  proxy:
-    # Only meaningful alongside `app` (see the note there) — same profile.
-    profiles: ['production']
-    image: caddy:2-alpine
-    restart: unless-stopped
+  app_green:
+    <<: *app_base
     ports:
-      - '${PORT:-3000}:80'
-    volumes:
-      - ./infra/caddy/Caddyfile:/etc/caddyfile:ro
-    command: caddy run --config /etc/caddyfile --adapter caddyfile
-    depends_on:
-      - app
+      - '${APP_PORT_GREEN:-3003}:3002'
 
 volumes:
   postgres_data:

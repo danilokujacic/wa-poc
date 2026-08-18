@@ -37,6 +37,8 @@ describe('App (e2e)', () => {
   });
 
   it('404s an unmapped route', async () => {
-    await request(app.getHttpServer()).get('/this-route-does-not-exist').expect(404);
+    await request(app.getHttpServer())
+      .get('/this-route-does-not-exist')
+      .expect(404);
   });
 });

@@ -63,3 +63,8 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Local Postgres dumps (scripts/backup-db.sh) — real data, never committed.
 /backups
+
+# deploy.sh's extracted release builds (dist/node_modules per SHA) — real
+# build output, never committed. Default location is a sibling of the repo
+# checkout itself so no VPS setup/sudo is needed before the first deploy.
+/releases

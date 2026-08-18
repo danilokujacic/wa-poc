@@ -10,7 +10,10 @@ import { Reflector } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { join } from 'path';
 import { DataSource } from 'typeorm';
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import {
+  PostgreSqlContainer,
+  StartedPostgreSqlContainer,
+} from '@testcontainers/postgresql';
 import { GenericContainer } from 'testcontainers';
 import { AppModule } from '../../src/app.module';
 import { GlobalExceptionFilter } from '../../src/exception/global-exception.filter';
@@ -76,7 +79,9 @@ export async function createTestApp(): Promise<TestApp> {
   };
 }
 
-async function runMigrations(postgres: StartedPostgreSqlContainer): Promise<void> {
+async function runMigrations(
+  postgres: StartedPostgreSqlContainer,
+): Promise<void> {
   const dataSource = new DataSource({
     type: 'postgres',
     host: postgres.getHost(),

@@ -9,11 +9,12 @@ import { AiClient } from './ai-client.interface';
 // completions endpoint in front of many hosted models/providers under one
 // token, including Llama. See
 // https://huggingface.co/docs/inference-providers/tasks/chat-completion
-const HF_ROUTER_URL = 'https://router.huggingface.co/v1/chat/completions';
+// Override via HF_BASE_URL (no trailing slash, no /chat/completions suffix).
+const DEFAULT_BASE_URL = 'https://router.huggingface.co/v1';
 
 // Default model — verify this ID is still current/available on
 // https://huggingface.co/models before relying on it; HF model IDs and
-// provider availability do change. Override via HUGGINGFACE_MODEL.
+// provider availability do change. Override via HF_MODEL.
 const DEFAULT_MODEL = 'meta-llama/Llama-3.1-8B-Instruct';
 
 interface HfChatCompletionResponse {
@@ -24,17 +25,18 @@ interface HfChatCompletionResponse {
 @Injectable()
 export class HuggingFaceAiClient implements AiClient {
   private readonly logger = new Logger(HuggingFaceAiClient.name);
-  private readonly model = process.env.HUGGINGFACE_MODEL ?? DEFAULT_MODEL;
+  private readonly model = process.env.HF_MODEL ?? DEFAULT_MODEL;
+  private readonly baseUrl = (
+    process.env.HF_BASE_URL ?? DEFAULT_BASE_URL
+  ).replace(/\/$/, '');
 
   async generateReply(prompt: string): Promise<string> {
-    const apiKey = process.env.HUGGINGFACE_API_KEY;
+    const apiKey = process.env.HF_API_KEY;
     if (!apiKey) {
-      throw new InternalServerErrorException(
-        'HUGGINGFACE_API_KEY is not configured',
-      );
+      throw new InternalServerErrorException('HF_API_KEY is not configured');
     }
 
-    const response = await fetch(HF_ROUTER_URL, {
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

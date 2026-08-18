@@ -10,16 +10,23 @@
 let fetchSpy: jest.SpiedFunction<typeof fetch> | undefined;
 
 export function mockMetaSendSuccess(): void {
-  fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
-    const url = typeof input === 'string' ? input : input.toString();
-    if (/graph\.facebook\.com\/v21\.0\/.+\/messages/.test(url) && init?.method === 'POST') {
-      return new Response(
-        JSON.stringify({ messages: [{ id: `wamid.mock-${Date.now()}` }] }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
+  fetchSpy = jest
+    .spyOn(global, 'fetch')
+    .mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (
+        /graph\.facebook\.com\/v21\.0\/.+\/messages/.test(url) &&
+        init?.method === 'POST'
+      ) {
+        return new Response(
+          JSON.stringify({ messages: [{ id: `wamid.mock-${Date.now()}` }] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      throw new Error(
+        `Unmocked fetch call in test: ${init?.method ?? 'GET'} ${url}`,
       );
-    }
-    throw new Error(`Unmocked fetch call in test: ${init?.method ?? 'GET'} ${url}`);
-  });
+    });
 }
 
 export function cleanupMetaMocks(): void {
