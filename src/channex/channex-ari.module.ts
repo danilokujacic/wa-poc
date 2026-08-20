@@ -3,8 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { ResortFeature } from '../entity/resort-feature.entity';
 import { Reservation } from '../entity/reservation.entity';
+import { RatePeriod } from '../entity/rate-period.entity';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
 import { ReservationRepository } from '../repository/reservation.repository';
+import { RatePeriodRepository } from '../repository/rate-period.repository';
 import { ChannexApiClient } from './channex-api.client';
 import { ChannexAriService } from './channex-ari.service';
 import {
@@ -22,12 +24,13 @@ import { ChannexAriProcessor } from '../bullmq/channex-ari/channex-ari.processor
 @Module({
   imports: [
     BullModule.registerQueue({ name: CHANNEX_ARI_QUEUE }),
-    TypeOrmModule.forFeature([ResortFeature, Reservation]),
+    TypeOrmModule.forFeature([ResortFeature, Reservation, RatePeriod]),
   ],
   providers: [
     ChannexApiClient,
     ResortFeatureRepository,
     ReservationRepository,
+    RatePeriodRepository,
     ChannexAriService,
     ChannexAriProducer,
     ChannexAriProcessor,

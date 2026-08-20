@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
 import { ReservationRepository } from '../repository/reservation.repository';
+import { RatePeriodRepository } from '../repository/rate-period.repository';
 import { ChannexApiClient } from './channex-api.client';
 import { toMinorUnits } from './channex-money.util';
+import { resolveRateRanges } from '../rate-period/rate-period.util';
 
 const AVAILABILITY_WINDOW_DAYS = 365;
 const RESTRICTIONS_WINDOW_DAYS = 730;
@@ -63,6 +65,7 @@ export class ChannexAriService {
     private readonly channexApiClient: ChannexApiClient,
     private readonly resortFeatureRepository: ResortFeatureRepository,
     private readonly reservationRepository: ReservationRepository,
+    private readonly ratePeriodRepository: RatePeriodRepository,
   ) {}
 
   async pushAvailability(featureId: string): Promise<void> {
@@ -151,20 +154,37 @@ export class ChannexAriService {
     const windowStart = today();
     const windowEnd = addDays(windowStart, RESTRICTIONS_WINDOW_DAYS);
 
-    // Only ever send `rate` — restrictions are applied as partial updates, and
-    // this app doesn't model min_stay/stop_sell/closures, so never assert
-    // values for decisions that were never actually made.
-    await this.channexApiClient.post('/restrictions', {
-      values: [
-        {
-          property_id: feature.resort.channexPropertyId,
-          rate_plan_id: feature.channexRatePlanId,
-          date_from: formatDate(windowStart),
-          date_to: formatDate(windowEnd),
-          rate: toMinorUnits(feature.price),
-        },
-      ],
-    });
-    this.logger.log(`Pushed restrictions for feature ${featureId}`);
+    const periods =
+      await this.ratePeriodRepository.findAllForFeature(featureId);
+    const resolved = resolveRateRanges(
+      periods,
+      windowStart,
+      windowEnd,
+      feature.price,
+    );
+
+    // Restrictions are applied as partial updates, so only ever send a field
+    // for a decision that was actually made — a `RatePeriod` with no minStay
+    // set (or no matching period at all) must never assert min_stay_arrival:
+    // 0, which Channex would read as "no minimum," a real (wrong) policy
+    // statement, not "we have no opinion." Same reasoning for the booleans:
+    // they default to `false` on RatePeriod itself (an explicit "not
+    // closed"), which is the correct thing to assert either way.
+    const values = resolved.map((range) => ({
+      property_id: feature.resort.channexPropertyId,
+      rate_plan_id: feature.channexRatePlanId,
+      date_from: range.startDate,
+      date_to: range.endDate,
+      rate: toMinorUnits(range.price),
+      ...(range.minStay !== null ? { min_stay_arrival: range.minStay } : {}),
+      stop_sell: range.stopSell,
+      closed_to_arrival: range.closedToArrival,
+      closed_to_departure: range.closedToDeparture,
+    }));
+
+    await this.channexApiClient.post('/restrictions', { values });
+    this.logger.log(
+      `Pushed restrictions for feature ${featureId} (${values.length} range(s))`,
+    );
   }
 }

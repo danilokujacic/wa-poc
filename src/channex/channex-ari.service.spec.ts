@@ -3,17 +3,22 @@ import { ChannexAriService } from './channex-ari.service';
 import { ChannexApiClient } from './channex-api.client';
 import { ResortFeatureRepository } from '../repository/resort-feature.repository';
 import { ReservationRepository } from '../repository/reservation.repository';
+import { RatePeriodRepository } from '../repository/rate-period.repository';
 
 describe('ChannexAriService', () => {
   let service: ChannexAriService;
   let channexApiClient: { post: jest.Mock };
   let resortFeatureRepository: { findOne: jest.Mock };
   let reservationRepository: { findActiveOverlapping: jest.Mock };
+  let ratePeriodRepository: { findAllForFeature: jest.Mock };
 
   beforeEach(async () => {
     channexApiClient = { post: jest.fn().mockResolvedValue(undefined) };
     resortFeatureRepository = { findOne: jest.fn() };
     reservationRepository = { findActiveOverlapping: jest.fn() };
+    ratePeriodRepository = {
+      findAllForFeature: jest.fn().mockResolvedValue([]),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -21,6 +26,7 @@ describe('ChannexAriService', () => {
         { provide: ChannexApiClient, useValue: channexApiClient },
         { provide: ResortFeatureRepository, useValue: resortFeatureRepository },
         { provide: ReservationRepository, useValue: reservationRepository },
+        { provide: RatePeriodRepository, useValue: ratePeriodRepository },
       ],
     }).compile();
 
@@ -221,6 +227,60 @@ describe('ChannexAriService', () => {
           rate: 4999,
         }),
       ]);
+    });
+
+    it('pushes one range per RatePeriod plus the base-price range around it, with policy fields included', async () => {
+      resortFeatureRepository.findOne.mockResolvedValue({
+        id: 'feature-1',
+        price: 49.99,
+        channexRatePlanId: 'rate-plan-1',
+        resort: { channexPropertyId: 'property-1' },
+      });
+      const today = new Date();
+      today.setUTCHours(0, 0, 0, 0);
+      const seasonStart = new Date(today);
+      seasonStart.setUTCDate(seasonStart.getUTCDate() + 5);
+      const seasonEnd = new Date(today);
+      seasonEnd.setUTCDate(seasonEnd.getUTCDate() + 10);
+      const toDateString = (d: Date) => d.toISOString().slice(0, 10);
+
+      ratePeriodRepository.findAllForFeature.mockResolvedValue([
+        {
+          id: 'period-1',
+          startDate: toDateString(seasonStart),
+          endDate: toDateString(seasonEnd),
+          price: 199,
+          minStay: 3,
+          stopSell: false,
+          closedToArrival: false,
+          closedToDeparture: false,
+          priority: 0,
+        },
+      ]);
+
+      await service.pushRestrictions('feature-1');
+
+      const [, body] = channexApiClient.post.mock.calls[0] as [
+        string,
+        { values: Array<Record<string, unknown>> },
+      ];
+      // Before the season, the season itself, and after it — three ranges.
+      expect(body.values).toHaveLength(3);
+      const seasonRange = body.values.find((v) => v.rate === 19900);
+      expect(seasonRange).toMatchObject({
+        property_id: 'property-1',
+        rate_plan_id: 'rate-plan-1',
+        rate: 19900,
+        min_stay_arrival: 3,
+        stop_sell: false,
+        closed_to_arrival: false,
+        closed_to_departure: false,
+      });
+      const baseRanges = body.values.filter((v) => v.rate === 4999);
+      expect(baseRanges).toHaveLength(2);
+      // No minStay was set on the base/default resolution — must never
+      // assert min_stay_arrival: 0 (a real, wrong policy statement).
+      expect(baseRanges[0]).not.toHaveProperty('min_stay_arrival');
     });
   });
 });

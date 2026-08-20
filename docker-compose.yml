@@ -95,7 +95,9 @@ services:
     volumes:
       - ${RELEASES_DIR:-./releases}:/releases:ro
     ports:
-      - '${APP_PORT_BLUE:-3002}:3002'
+      # Bound to localhost only — nginx runs on this same host and reaches
+      # these directly; nothing outside the box should ever hit them.
+      - '127.0.0.1:${APP_PORT_BLUE:-3002}:3002'
     healthcheck:
       test:
         [
@@ -117,7 +119,7 @@ services:
   app_green:
     <<: *app_base
     ports:
-      - '${APP_PORT_GREEN:-3003}:3002'
+      - '127.0.0.1:${APP_PORT_GREEN:-3003}:3002'
 
 volumes:
   postgres_data:

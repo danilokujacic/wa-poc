@@ -17,6 +17,9 @@ import { ResortContextService } from 'src/resort/resort-context.service';
 import { ResortFeatureRepository } from 'src/repository/resort-feature.repository';
 import { ReservationRepository } from 'src/repository/reservation.repository';
 import { ConversationRepository } from 'src/repository/conversation.repository';
+import { RatePeriodRepository } from 'src/repository/rate-period.repository';
+import { resolveRate } from 'src/rate-period/rate-period.util';
+import type { ResolvedRate } from 'src/rate-period/rate-period.types';
 import { REDIS_CLIENT } from 'src/redis/redis.provider';
 import type { Resort } from 'src/entity/resort.entity';
 import type { ResortFeature } from 'src/entity/resort-feature.entity';
@@ -72,6 +75,15 @@ const CONVERSATION_HISTORY_TTL_SECONDS = 24 * 3600;
 interface FeatureAvailability {
   feature: ResortFeature;
   availability: number;
+  // Today's resolved price/policy (see rate-period.util.ts) — falls back to
+  // feature.price when no RatePeriod covers today. This is what actually
+  // gets quoted to the guest; feature.price alone is stale the moment a
+  // season is in effect. NOTE: resolved for *today*, not whatever future
+  // dates the guest ends up asking about — if a guest's stay crosses into a
+  // different season than today, the AI is still quoting today's rate. Not
+  // solved here; would need the reservation flow to re-resolve once dates
+  // are known, not just at the initial feature-listing stage.
+  rate: ResolvedRate;
 }
 
 @Processor(MESSAGE_FLUSH_QUEUE, {
@@ -85,6 +97,7 @@ export class MessageFlushProcessor extends WorkerHost {
     private readonly resortFeatureRepository: ResortFeatureRepository,
     private readonly reservationRepository: ReservationRepository,
     private readonly conversationRepository: ConversationRepository,
+    private readonly ratePeriodRepository: RatePeriodRepository,
     private readonly eventEmitter: EventEmitter2,
     @Inject(MESSAGE_SENDER) private readonly messageSender: MessageSender,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
@@ -421,13 +434,19 @@ export class MessageFlushProcessor extends WorkerHost {
       where: { resort: { id: resortId }, isActive: true },
     });
 
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
     return Promise.all(
       features.map(async (feature) => {
-        const activeCount =
-          await this.reservationRepository.countActiveForFeature(feature.id);
+        const [activeCount, periods] = await Promise.all([
+          this.reservationRepository.countActiveForFeature(feature.id),
+          this.ratePeriodRepository.findAllForFeature(feature.id),
+        ]);
         return {
           feature,
           availability: Math.max(feature.quantity - activeCount, 0),
+          rate: resolveRate(periods, today, feature.price),
         };
       }),
     );
@@ -583,11 +602,26 @@ export class MessageFlushProcessor extends WorkerHost {
 
     if (featureContext.length > 0) {
       const featureSection = featureContext
-        .map(({ feature, availability }) => {
+        .map(({ feature, availability, rate }) => {
           const description = feature.description
             ? ` — ${feature.description}`
             : '';
-          return `- ${feature.name}: price ${feature.price}, available ${availability}/${feature.quantity}${description}`;
+          const policyNotes = [
+            rate.stopSell
+              ? 'currently not sellable (stop sell in effect)'
+              : null,
+            rate.minStay ? `${rate.minStay}-night minimum stay` : null,
+            rate.closedToArrival
+              ? 'not available as a check-in date today'
+              : null,
+            rate.closedToDeparture
+              ? 'not available as a check-out date today'
+              : null,
+          ]
+            .filter(Boolean)
+            .join(', ');
+          const policySuffix = policyNotes ? ` (${policyNotes})` : '';
+          return `- ${feature.name}: price ${rate.price}, available ${availability}/${feature.quantity}${description}${policySuffix}`;
         })
         .join('\n');
 

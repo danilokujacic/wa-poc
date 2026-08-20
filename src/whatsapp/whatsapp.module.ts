@@ -18,13 +18,15 @@ import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
 import { GlobalWebhookThrottlerGuard } from './guards/global-webhook-throttler.guard';
 import { Conversation } from 'src/entity/conversation.entity';
 import { ConversationRepository } from 'src/repository/conversation.repository';
+import { RatePeriod } from 'src/entity/rate-period.entity';
+import { RatePeriodRepository } from 'src/repository/rate-period.repository';
 
 @Module({
   imports: [
     BullModule.registerQueue({
       name: MESSAGE_FLUSH_QUEUE,
     }),
-    TypeOrmModule.forFeature([Conversation]),
+    TypeOrmModule.forFeature([Conversation, RatePeriod]),
     ResortModule,
     ResortFeatureModule,
     ReservationModule,
@@ -38,6 +40,7 @@ import { ConversationRepository } from 'src/repository/conversation.repository';
     MessageBatchProducer,
     MessageFlushProcessor,
     ConversationRepository,
+    RatePeriodRepository,
     WebhookSignatureGuard,
     GlobalWebhookThrottlerGuard,
   ],

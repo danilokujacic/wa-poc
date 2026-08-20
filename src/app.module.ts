@@ -22,6 +22,7 @@ import { DeskModule } from './desk/desk.module';
 import { AuthModule } from './auth/auth.module';
 import { ChannexModule } from './channex/channex.module';
 import { HealthModule } from './health/health.module';
+import { RatePeriodModule } from './rate-period/rate-period.module';
 import appConfig from './config/app.config';
 
 @Module({
@@ -102,6 +103,7 @@ import appConfig from './config/app.config';
     PhoneChangeModule,
     DeskModule,
     ChannexModule,
+    RatePeriodModule,
     HealthModule,
     ThrottlerModule.forRoot([
       {
