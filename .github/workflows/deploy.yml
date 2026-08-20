@@ -25,6 +25,11 @@ jobs:
           script_stop: true
           script: |
             cd ${{ secrets.DEPLOY_APP_DIR }}
+            echo "DEBUG whoami: $(whoami)"
+            echo "DEBUG id: $(id)"
+            echo "DEBUG HOME: $HOME"
+            echo "DEBUG dir owner: $(stat -c '%U:%G' .)"
+            echo "DEBUG safe.directory entries: $(git config --global --get-all safe.directory)"
             git fetch origin main
             git reset --hard origin/main
             ./scripts/deploy.sh
