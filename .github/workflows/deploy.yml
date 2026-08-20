@@ -25,6 +25,19 @@ jobs:
           script_stop: true
           script: |
             cd ${{ secrets.DEPLOY_APP_DIR }}
-            git fetch origin main
-            git reset --hard origin/main
+            # `sudo` (no -E) runs these two as root, with root's own $HOME —
+            # so they pick up root's ~/.ssh, not this SSH login user's. Only
+            # needed if this login user has no GitHub key/deploy-key of its
+            # own registered but root does. Requires passwordless sudo for
+            # this user on git specifically (visudo: `<user> ALL=(root)
+            # NOPASSWD: /usr/bin/git`) — there's no TTY here to type a
+            # password into.
+            sudo git fetch origin main
+            sudo git reset --hard origin/main
+            # The two commands above just wrote every file as root — hand
+            # the checkout back to this login user before deploy.sh runs,
+            # or its own writes (releases/, etc.) and the next run's plain
+            # `git fetch` hit the same "dubious ownership"/permission
+            # problem all over again.
+            sudo chown -R "$(whoami):$(whoami)" ${{ secrets.DEPLOY_APP_DIR }}
             ./scripts/deploy.sh
